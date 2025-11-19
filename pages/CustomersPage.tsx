@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiCreditCard, FiSearch } from 'react-icons/fi';
 import type { Customer, PageKey } from '../types';
@@ -6,6 +5,8 @@ import CustomerModal from '../components/CustomerModal';
 import Pagination from '../components/Pagination';
 import { useAppContext } from '../context/DataContext';
 import ColumnToggler from '../components/ColumnToggler';
+import ConfirmationModal from '../components/ConfirmationModal'; // Import Modal xác nhận
+import toast from 'react-hot-toast'; // Import Toast
 
 const customerColumns: Record<string, string> = {
     name: 'Tên khách hàng',
@@ -14,15 +15,18 @@ const customerColumns: Record<string, string> = {
     address: 'Địa chỉ',
 };
 
-
 const CustomersPage: React.FC = () => {
   const { customers, handleSaveCustomer, handleDeleteCustomer, setPayingCustomerId, handleDeleteCustomers, columnVisibility, handleColumnVisibilityChange } = useAppContext();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debtStatus, setDebtStatus] = useState('all'); // 'all', 'debt', 'no-debt'
+  const [debtStatus, setDebtStatus] = useState('all'); 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // State mới để quản lý việc xóa
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null); 
+  
   const ITEMS_PER_PAGE = 10;
   const pageKey: PageKey = 'customers';
 
@@ -37,13 +41,31 @@ const CustomersPage: React.FC = () => {
   };
 
   const onSave = async (customer: Customer) => {
-    await handleSaveCustomer(customer);
-    handleCloseModal();
+    try {
+        await handleSaveCustomer(customer);
+        toast.success(customer.id ? 'Cập nhật thành công!' : 'Thêm mới thành công!'); // Thông báo đẹp
+        handleCloseModal();
+    } catch (error: any) {
+        toast.error(error.message || 'Có lỗi xảy ra khi lưu.');
+    }
   };
 
-  const onDelete = async (customerId: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa khách hàng này không?')) {
-      await handleDeleteCustomer(customerId);
+  // Hàm này chỉ mở Modal xác nhận, chưa xóa ngay
+  const handleDeleteClick = (customerId: string) => {
+      setCustomerToDelete(customerId);
+  };
+
+  // Hàm này mới thực sự xóa (được gọi khi bấm "Xác nhận" trên Modal)
+  const handleConfirmDelete = async () => {
+    if (customerToDelete) {
+        try {
+            await handleDeleteCustomer(customerToDelete);
+            toast.success('Đã xóa khách hàng thành công.');
+        } catch (error: any) {
+            toast.error(error.message || "Không thể xóa khách hàng này.");
+        } finally {
+            setCustomerToDelete(null); // Đóng modal
+        }
     }
   };
 
@@ -86,8 +108,15 @@ const CustomersPage: React.FC = () => {
   const isAllSelected = paginatedCustomers.length > 0 && selectedIds.length === paginatedCustomers.length;
   
   const handleBulkDelete = async () => {
-    await handleDeleteCustomers(selectedIds);
-    setSelectedIds([]);
+    if (window.confirm(`Bạn có chắc muốn xóa ${selectedIds.length} khách hàng đã chọn?`)) {
+        try {
+            await handleDeleteCustomers(selectedIds);
+            toast.success(`Đã xóa ${selectedIds.length} khách hàng.`);
+            setSelectedIds([]);
+        } catch (error: any) {
+            toast.error(error.message || 'Lỗi khi xóa nhiều khách hàng.');
+        }
+    }
   };
 
   return (
@@ -196,7 +225,7 @@ const CustomersPage: React.FC = () => {
                       <button onClick={() => handleOpenModal(customer)} className="text-primary-600 hover:text-primary-800 transition-transform hover:scale-110 p-1 rounded-full hover:bg-primary-100 dark:hover:bg-primary-500/20" title="Sửa">
                         <FiEdit className="h-5 w-5" />
                       </button>
-                      <button onClick={() => onDelete(customer.id)} className="text-red-500 hover:text-red-700 transition-transform hover:scale-110 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/20" title="Xóa">
+                      <button onClick={() => handleDeleteClick(customer.id)} className="text-red-500 hover:text-red-700 transition-transform hover:scale-110 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/20" title="Xóa">
                         <FiTrash2 className="h-5 w-5" />
                       </button>
                     </td>
@@ -213,7 +242,7 @@ const CustomersPage: React.FC = () => {
           </table>
         </div>
         
-        {/* Card View */}
+        {/* Card View (Mobile) */}
         <div className="lg:hidden">
             {paginatedCustomers.length > 0 ? paginatedCustomers.map(customer => (
                 <div key={customer.id} className={`p-4 border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${selectedIds.includes(customer.id) ? 'bg-primary-50 dark:bg-primary-500/10' : 'bg-white dark:bg-slate-800'}`}>
@@ -238,7 +267,7 @@ const CustomersPage: React.FC = () => {
                            <button onClick={() => handleOpenModal(customer)} className="text-primary-600 hover:text-primary-800 p-1 rounded-full hover:bg-primary-100 dark:hover:bg-primary-500/20" title="Sửa">
                                <FiEdit className="h-5 w-5" />
                            </button>
-                           <button onClick={() => onDelete(customer.id)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/20" title="Xóa">
+                           <button onClick={() => handleDeleteClick(customer.id)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/20" title="Xóa">
                                <FiTrash2 className="h-5 w-5" />
                            </button>
                         </div>
@@ -263,6 +292,7 @@ const CustomersPage: React.FC = () => {
         <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} totalItems={filteredCustomers.length} itemsPerPage={ITEMS_PER_PAGE} />
       </div>
 
+      {/* Modal Form */}
       {isModalOpen && (
         <CustomerModal
           customer={editingCustomer}
@@ -270,6 +300,20 @@ const CustomersPage: React.FC = () => {
           onSave={onSave}
         />
       )}
+
+      {/* Modal Xác nhận Xóa (Thay thế window.confirm) */}
+      {customerToDelete && (
+        <ConfirmationModal
+            isOpen={!!customerToDelete}
+            onClose={() => setCustomerToDelete(null)}
+            onConfirm={handleConfirmDelete}
+            title="Xác nhận Xóa Khách hàng"
+        >
+            Bạn có chắc chắn muốn xóa khách hàng này không? 
+            Hệ thống sẽ kiểm tra ràng buộc (công nợ, hóa đơn) trước khi xóa.
+        </ConfirmationModal>
+      )}
+
     </div>
   );
 };

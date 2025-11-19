@@ -331,10 +331,16 @@ const createTenantCrudEndpoints = (model, modelName) => {
 };
 
 createTenantCrudEndpoints(Product, 'products');
-createTenantCrudEndpoints(Customer, 'customers');
 createTenantCrudEndpoints(Supplier, 'suppliers');
 createTenantCrudEndpoints(Quote, 'quotes');
 createTenantCrudEndpoints(Order, 'orders');
+
+apiRouter.post('/customers', async (req, res) => {
+    try {
+        const doc = await new Customer({ ...req.body, organizationId: req.organizationId }).save();
+        res.status(201).json(doc);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
 
 // --- CUSTOM LOGIC ENDPOINTS (ĐÃ SỬA) ---
 
@@ -366,6 +372,7 @@ apiRouter.delete('/categories/:id', async (req, res) => {
         res.status(204).send();
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 
 // POS SALE (Sửa: Lỗi chính tả 'paymentAmount' + logic 'organizationId')
 apiRouter.post('/sales', async (req, res) => {
@@ -428,6 +435,84 @@ apiRouter.post('/sales', async (req, res) => {
         console.error('!!! LỖI TẠI /api/sales:', err);
         res.status(500).json({ message: 'Lỗi máy chủ khi xử lý bán hàng.', error: err.message });
     }
+});
+// --- LOGIC XÓA HÓA ĐƠN (Revert Kho & Nợ) ---
+apiRouter.delete('/invoices/:id', async (req, res) => {
+    const { organizationId } = req;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        // 1. Tìm hóa đơn cần xóa
+        const invoice = await Invoice.findOne({ _id: req.params.id, organizationId }).session(session);
+        if (!invoice) {
+            throw new Error('Không tìm thấy hóa đơn.');
+        }
+
+        // 2. Hoàn trả tồn kho (Vòng lặp)
+        for (const item of invoice.items) {
+            await Product.findOneAndUpdate(
+                { _id: item.productId, organizationId },
+                { $inc: { stock: item.quantity } } // Cộng lại số lượng đã bán
+            ).session(session);
+        }
+
+        // 3. Hoàn trả công nợ (Trừ đi số tiền khách ĐÃ NỢ từ hóa đơn này)
+        // Logic: Nợ tăng thêm = Tổng tiền - Đã trả. Giờ xóa đi thì phải trừ ngược lại.
+        const debtToRevert = invoice.totalAmount - invoice.paidAmount;
+        if (debtToRevert > 0) {
+            await Customer.findOneAndUpdate(
+                { _id: invoice.customerId, organizationId },
+                { $inc: { debt: -debtToRevert } } // Giảm nợ
+            ).session(session);
+        }
+
+        // 4. Xóa các phiếu thu liên quan (Optional - Tùy nghiệp vụ)
+        // Nếu xóa hóa đơn, thường cũng nên xóa luôn lịch sử thu tiền của nó để sạch sổ quỹ
+        await CashFlowTransaction.deleteMany({ 
+            description: { $regex: invoice.invoiceNumber },
+            organizationId 
+        }).session(session);
+
+        // 5. Xóa hóa đơn
+        await invoice.deleteOne({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+        res.status(204).send();
+
+    } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({ message: 'Lỗi khi xóa hóa đơn.', error: err.message });
+    }
+});
+
+// DELETE CUSTOMER
+apiRouter.delete('/customers/:id', async (req, res) => {
+    const { organizationId } = req;
+    try {
+        // 1. Kiểm tra xem khách có đang nợ không
+        const customer = await Customer.findOne({ _id: req.params.id, organizationId });
+        if (!customer) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+        
+        if (customer.debt > 0) {
+             return res.status(400).json({ message: `Không thể xóa! Khách đang nợ ${customer.debt.toLocaleString()}đ. Vui lòng thu hết nợ trước.` });
+        }
+        if (customer.debt < 0) {
+             return res.status(400).json({ message: `Không thể xóa! Bạn đang nợ khách ${Math.abs(customer.debt).toLocaleString()}đ (Tiền trả trước).` });
+        }
+
+        // 2. Kiểm tra xem khách có hóa đơn lịch sử không
+        const hasInvoices = await Invoice.exists({ customerId: req.params.id, organizationId });
+        if (hasInvoices) {
+            return res.status(400).json({ message: 'Không thể xóa! Khách hàng này đã có lịch sử mua hàng. Việc xóa sẽ làm hỏng dữ liệu báo cáo.' });
+        }
+
+        // Nếu sạch sẽ (không nợ, không hóa đơn) thì mới cho xóa
+        await customer.deleteOne();
+        res.status(204).send();
+    } catch (err) { res.status(500).json({ message: 'Lỗi khi xóa khách hàng.', error: err.message }); }
 });
 
 // (Tất cả các hàm logic nghiệp vụ phức tạp khác đều phải được sửa tương tự)

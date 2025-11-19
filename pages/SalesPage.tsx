@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { FiPlus, FiTrash2, FiSearch, FiXCircle, FiCheckCircle, FiShoppingCart, FiCreditCard, FiUser, FiAlertCircle } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiSearch, FiXCircle, FiCheckCircle, FiShoppingCart, FiCreditCard, FiUser } from 'react-icons/fi';
 import type { Customer, Product, InvoiceItem } from '../types';
 import QuickCustomerModal from '../components/QuickCustomerModal';
 import { useAppContext } from '../context/DataContext';
@@ -10,7 +10,6 @@ const SalesPage: React.FC = () => {
   const { customers, products, categories, handleCompleteSale, handleSaveCustomer } = useAppContext();
   
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const [cart, setCart] = useState<InvoiceItem[]>([]);
   const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false);
   
@@ -97,25 +96,12 @@ const SalesPage: React.FC = () => {
         const newCart = prevCart.map(item => {
             if (item.productId === productId) {
                 let quantity = newQuantity ?? item.quantity;
-                let price = newPrice ?? item.price;
-                
-                // 1. Chặn giá âm
-                if (price < 0) price = 0;
-
-                // 2. Chặn số lượng âm (Nếu < 1 thì giữ nguyên 1 hoặc hỏi xóa)
-                // Ở đây logic là: Nếu nhập < 0 thì coi như là 1 (tránh lỗi tính toán)
-                // Việc xóa sản phẩm đã có nút "Thùng rác" riêng xử lý
-                if (quantity < 0) quantity = 1;
-
+                const price = newPrice ?? item.price;
                 if (quantity > product.stock) {
                     alert(`Số lượng tồn kho không đủ. Tối đa: ${product.stock}`);
                     quantity = product.stock;
                 }
-                
-                // Chỉ giữ lại item nếu số lượng > 0
-                if (quantity > 0) {
-                    return { ...item, quantity, price };
-                }
+                if (quantity > 0) return { ...item, quantity, price };
                 return null; 
             }
             return item;
@@ -220,19 +206,6 @@ const SalesPage: React.FC = () => {
                             <option value="" disabled>-- Tìm hoặc chọn khách hàng --</option>
                             {customers.map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
                         </select>
-                        <div className="flex-grow">
-
-                        {/* === BẮT ĐẦU PHẦN HIỂN THỊ NỢ CŨ === */}
-                        {selectedCustomer && selectedCustomer.debt > 0 && (
-                            <div className="mt-2 flex items-center gap-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 animate-pulse">
-                                <FiAlertCircle className="w-4 h-4 flex-shrink-0" />
-                                <p className="text-xs font-bold">
-                                    Nợ cũ: {selectedCustomer.debt.toLocaleString('vi-VN')} đ
-                                </p>
-                            </div>
-                        )}
-                        {/* === KẾT THÚC === */}
-                    </div>
                     </div>
                     <div className="mt-6">
                         <button onClick={() => setIsQuickCustomerModalOpen(true)} className="flex items-center px-4 py-2 text-white rounded-lg bg-primary-600 hover:bg-primary-700 transition-colors text-sm h-[38px]">
@@ -258,7 +231,7 @@ const SalesPage: React.FC = () => {
                     </nav>
                 </div>
                 <div className="relative mb-4">
-                    <input type="text" placeholder="Tìm sản phẩm..." value={productSearchTerm} onChange={(e) => setProductSearchTerm(e.target.value)}
+                    <input type="text" placeholder="Tìm sản phẩm theo tên hoặc Mã SKU..." value={productSearchTerm} onChange={(e) => setProductSearchTerm(e.target.value)}
                       className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg shadow-sm py-2 px-3 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-300 sm:text-sm"
                     />
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -329,7 +302,6 @@ const SalesPage: React.FC = () => {
                                     <input 
                                         type="number" 
                                         value={item.quantity}
-                                        min="1"
                                         onChange={e => handleUpdateCartItem(item.productId, parseInt(e.target.value) || 0)}
                                         className="w-14 h-full text-center border-x border-slate-200 dark:border-slate-600 border-y-0 focus:ring-0 p-0 text-sm font-bold text-primary-600 dark:text-primary-400 bg-transparent [&::-webkit-inner-spin-button]:appearance-none"
                                     />

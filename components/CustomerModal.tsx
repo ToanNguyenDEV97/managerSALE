@@ -44,7 +44,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer, onClose, onSave
     if (!formData.phone.trim()) {
         newErrors.phone = "Số điện thoại là bắt buộc.";
     } else if (!phoneRegex.test(formData.phone)) {
-        newErrors.phone = "SĐT không hợp lệ (Phải là 10 số, đầu 03, 05, 07, 08, 09).";
+        newErrors.phone = "SĐT không hợp lệ";
     }
     
     if (!formData.address.trim()) newErrors.address = "Địa chỉ là bắt buộc.";
