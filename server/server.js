@@ -328,6 +328,32 @@ const createTenantCrudEndpoints = (model, modelName) => {
             res.status(204).send();
         } catch (err) { res.status(500).json({ message: err.message }); }
     });
+    apiRouter.get(`/${modelName}`, async (req, res) => {
+    const { organizationId } = req;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    try {
+        // 1. Lấy dữ liệu phân trang
+        const data = await model.find({ organizationId })
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
+            .skip(skip)
+            .limit(limit);
+
+        // 2. Đếm tổng số để biết có bao nhiêu trang
+        const total = await model.countDocuments({ organizationId });
+
+        res.json({
+            data,
+            pagination: {
+                total,
+                page,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
 };
 
 createTenantCrudEndpoints(Product, 'products');

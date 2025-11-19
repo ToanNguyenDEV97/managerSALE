@@ -3,6 +3,7 @@ import { FiPlus, FiTrash2, FiSearch, FiXCircle, FiCheckCircle, FiShoppingCart, F
 import type { Customer, Product, InvoiceItem } from '../types';
 import QuickCustomerModal from '../components/QuickCustomerModal';
 import { useAppContext } from '../context/DataContext';
+import CurrencyInput from '../components/CurrencyInput'; // Import component nhập tiền
 
 type PaymentMethod = 'cash' | 'debt';
 
@@ -278,14 +279,14 @@ const SalesPage: React.FC = () => {
                             <div className="flex-grow min-w-0">
                                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate" title={item.name}>{item.name}</p>
                                 <div className="flex items-baseline gap-1 mt-1">
-                                    <div className="relative group/input">
-                                        <input 
-                                            type="number" 
+                                    <div className="relative group/input w-28">
+                                        {/* SỬ DỤNG CURRENCY INPUT CHO GIÁ */}
+                                        <CurrencyInput 
                                             value={item.price}
-                                            onChange={e => handleUpdateCartItem(item.productId, undefined, parseFloat(e.target.value) || 0)}
-                                            className="w-20 text-xs font-medium text-slate-600 dark:text-slate-400 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 focus:border-primary-500 focus:ring-0 p-0 pb-0.5 transition-colors text-right"
+                                            onValueChange={(values) => handleUpdateCartItem(item.productId, undefined, values.floatValue || 0)}
+                                            className="w-full text-xs font-medium text-slate-600 dark:text-slate-400 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 focus:border-primary-500 focus:ring-0 p-0 pb-0.5 transition-colors text-right"
+                                            placeholder="Giá"
                                         />
-                                        <span className="text-[10px] text-slate-400 ml-1">đ</span>
                                     </div>
                                 </div>
                             </div>
@@ -334,13 +335,11 @@ const SalesPage: React.FC = () => {
                 
                 {/* Khu vực Thanh toán */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-xl shadow-inner">
-                    {/* Tổng tiền */}
                     <div className="flex justify-between items-baseline mb-4">
                         <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Tổng thanh toán:</span>
                         <span className="text-2xl font-bold text-primary-600 dark:text-primary-400">{totals.total.toLocaleString('vi-VN')} đ</span>
                     </div>
 
-                    {/* 1. Chọn Phương thức (Tabs) */}
                     <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg mb-4">
                         <button 
                             onClick={() => setPaymentMethod('cash')}
@@ -356,15 +355,14 @@ const SalesPage: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* 2. Ô nhập tiền (Chỉ hiện khi chọn Tiền mặt) */}
                     {paymentMethod === 'cash' && (
                         <div className="mb-4 animate-fade-in">
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-slate-400">₫</span>
-                                <input 
-                                    type="number" 
-                                    value={paymentAmount} 
-                                    onChange={e => setPaymentAmount(e.target.value)}
+                                {/* SỬ DỤNG CURRENCY INPUT CHO TIỀN KHÁCH ĐƯA */}
+                                <CurrencyInput 
+                                    value={paymentAmount}
+                                    onValueChange={(values) => setPaymentAmount(values.value)}
                                     className="block w-full pl-8 pr-3 py-2.5 text-right font-bold text-lg border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
                                     placeholder="0"
                                 />
@@ -378,7 +376,7 @@ const SalesPage: React.FC = () => {
                                         onClick={() => setPaymentAmount(amount.toString())}
                                         className="px-1 py-1.5 text-xs font-medium bg-white border border-slate-200 hover:border-primary-300 hover:text-primary-600 rounded shadow-sm transition-colors truncate"
                                     >
-                                        {amount >= 1000 ? (amount/1000) + 'k' : amount}
+                                        {(amount/1000).toLocaleString('vi-VN')}k
                                     </button>
                                 ))}
                             </div>
@@ -392,18 +390,15 @@ const SalesPage: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Thông báo nợ (Chỉ hiện khi Ghi nợ) */}
                     {paymentMethod === 'debt' && (
                         <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg text-center">
                             <p className="text-sm text-red-600 dark:text-red-400 font-medium">Đơn hàng này sẽ được ghi vào công nợ khách hàng.</p>
                         </div>
                     )}
 
-                    {/* Thông báo lỗi/thành công */}
                     {error && <p className="text-sm text-red-600 mb-3 text-center font-medium bg-red-50 p-2 rounded">{error}</p>}
                     {successMessage && <p className="text-sm text-green-600 mb-3 text-center flex items-center justify-center gap-1 font-medium bg-green-50 p-2 rounded"><FiCheckCircle/> {successMessage}</p>}
 
-                    {/* 3. Nút Hành động Duy nhất */}
                      <button 
                         onClick={handleMainAction} 
                         disabled={isSubmitting}

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { FiMenu } from 'react-icons/fi';
 import { Toaster } from 'react-hot-toast';
+// 1. Import React Query
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Context & Types
 import { useAppContext } from './context/DataContext';
 import type { Page } from './types';
 
-// Components & Modals
+// Components
 import Sidebar from './components/Sidebar';
 import UserDropdown from './components/UserDropdown';
 import InvoiceForm from './components/InvoiceForm';
@@ -15,6 +17,8 @@ import QuoteForm from './components/QuoteForm';
 import OrderForm from './components/OrderForm';
 import DeliveryForm from './components/DeliveryForm';
 import InventoryCheckForm from './components/InventoryCheckForm';
+
+// Modals
 import PaymentModal from './components/PaymentModal';
 import CustomerPaymentModal from './components/CustomerPaymentModal';
 import SupplierPaymentModal from './components/SupplierPaymentModal';
@@ -42,10 +46,22 @@ import TaxPage from './pages/TaxPage';
 import ReportsPage from './pages/ReportsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
+
+// Print Pages
 import PrintInvoicePage from './pages/PrintInvoicePage';
 import PrintVoucherPage from './pages/PrintVoucherPage';
 import PrintQuotePage from './pages/PrintQuotePage';
 import PrintDeliveryPage from './pages/PrintDeliveryPage';
+
+// 2. Khởi tạo QueryClient
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // Tắt tự động tải lại khi chuyển tab
+      retry: 1, // Thử lại 1 lần nếu lỗi mạng
+    },
+  },
+});
 
 const App: React.FC = () => {
   const {
@@ -133,7 +149,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <>
+    // 3. Bọc ứng dụng bằng QueryClientProvider
+    <QueryClientProvider client={queryClient}>
       <Toaster position="top-right" toastOptions={{ className: 'dark:bg-slate-800 dark:text-white', style: { background: '#334155', color: '#fff' }, success: { iconTheme: { primary: '#10b981', secondary: 'white' } }, error: { iconTheme: { primary: '#ef4444', secondary: 'white' } } }} />
       
       <div className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
@@ -158,7 +175,7 @@ const App: React.FC = () => {
         {editingUser && <UserModal />}
         {isProfileModalOpen && <ProfileModal />}
       </div>
-    </>
+    </QueryClientProvider>
   );
 };
 
