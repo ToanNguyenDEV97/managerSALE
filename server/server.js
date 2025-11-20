@@ -397,6 +397,91 @@ createTenantCrudEndpoints(Product, 'products');
 createTenantCrudEndpoints(Supplier, 'suppliers');
 createTenantCrudEndpoints(Quote, 'quotes');
 createTenantCrudEndpoints(Order, 'orders');
+// --- LOGIC SỬA HÓA ĐƠN AN TOÀN (Revert & Apply) ---
+apiRouter.put('/invoices/:id', async (req, res) => {
+    const { organizationId } = req;
+    
+    // Cần dùng transaction để đảm bảo an toàn tuyệt đối
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        // 1. Lấy hóa đơn CŨ
+        const oldInvoice = await Invoice.findOne({ _id: req.params.id, organizationId }).session(session);
+        if (!oldInvoice) throw new Error('Không tìm thấy hóa đơn.');
+        
+        // Chặn sửa nếu đã thanh toán (để an toàn, bắt buộc hủy phiếu thu trước)
+        if (oldInvoice.status === 'Đã thanh toán') {
+             throw new Error('Không thể sửa hóa đơn đã thanh toán hết. Vui lòng xóa phiếu thu liên quan trước.');
+        }
+
+        // 2. HOÀN TÁC (REVERT) DỮ LIỆU CŨ
+        // 2a. Cộng lại hàng vào kho
+        for (const item of oldInvoice.items) {
+            await Product.findOneAndUpdate(
+                { _id: item.productId, organizationId },
+                { $inc: { stock: item.quantity } } 
+            ).session(session);
+        }
+        // 2b. Trừ bớt nợ cũ của khách (Số tiền khách NỢ = Tổng - Đã trả)
+        const oldDebt = oldInvoice.totalAmount - oldInvoice.paidAmount;
+        if (oldDebt > 0) {
+             await Customer.findOneAndUpdate(
+                { _id: oldInvoice.customerId, organizationId },
+                { $inc: { debt: -oldDebt } }
+            ).session(session);
+        }
+
+        // 3. ÁP DỤNG (APPLY) DỮ LIỆU MỚI
+        const { items, totalAmount, customerId } = req.body;
+        
+        // 3a. Trừ kho theo số lượng mới
+        for (const item of items) {
+             const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
+             if (product.stock < item.quantity) throw new Error(`Sản phẩm ${item.name} không đủ hàng tồn kho.`);
+             
+             await Product.findOneAndUpdate(
+                { _id: item.productId, organizationId },
+                { $inc: { stock: -item.quantity } }
+             ).session(session);
+        }
+
+        // 3b. Tính toán nợ mới (Giữ nguyên số tiền đã trả paidAmount cũ)
+        // Lưu ý: API này không cho sửa paidAmount, muốn sửa tiền trả phải dùng API thanh toán riêng
+        const newDebt = totalAmount - oldInvoice.paidAmount;
+        
+        // 3c. Cộng nợ mới cho khách
+        if (newDebt > 0) {
+            await Customer.findOneAndUpdate(
+                { _id: customerId, organizationId },
+                { $inc: { debt: newDebt } }
+            ).session(session);
+        }
+
+        // 4. Cập nhật Hóa đơn
+        const updatedInvoice = await Invoice.findOneAndUpdate(
+            { _id: req.params.id, organizationId },
+            { 
+                items, 
+                totalAmount, 
+                customerId,
+                // Tự động cập nhật trạng thái
+                status: oldInvoice.paidAmount >= totalAmount ? 'Đã thanh toán' : 'Thanh toán một phần'
+            },
+            { new: true, session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+        res.json(updatedInvoice);
+
+    } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({ message: 'Lỗi khi sửa hóa đơn: ' + err.message });
+    }
+});
+createTenantCrudEndpoints(Invoice, 'invoices')
 
 apiRouter.post('/customers', async (req, res) => {
     try {
@@ -513,6 +598,105 @@ apiRouter.post('/sales', async (req, res) => {
     } catch (err) {
         console.error('!!! LỖI TẠI /api/sales:', err);
         res.status(500).json({ message: 'Lỗi máy chủ khi xử lý bán hàng.', error: err.message });
+    }
+});
+
+// --- LOGIC SỬA HÓA ĐƠN AN TOÀN (Revert & Apply) ---
+apiRouter.put('/invoices/:id', async (req, res) => {
+    const { organizationId } = req;
+    
+    // Sử dụng Transaction để đảm bảo an toàn dữ liệu tuyệt đối
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { items, totalAmount, customerId, customerName } = req.body;
+
+        // 1. Lấy hóa đơn CŨ từ Database
+        const oldInvoice = await Invoice.findOne({ _id: req.params.id, organizationId }).session(session);
+        if (!oldInvoice) throw new Error('Không tìm thấy hóa đơn.');
+        
+        // Chặn sửa nếu hóa đơn đã hoàn tất thanh toán (để tránh phức tạp về dòng tiền)
+        // Nếu muốn sửa, người dùng nên xóa phiếu thu trước
+        if (oldInvoice.status === 'Đã thanh toán') {
+             throw new Error('Không thể sửa hóa đơn đã thanh toán hết. Vui lòng xóa phiếu thu liên quan trước khi sửa.');
+        }
+
+        // 2. HOÀN TÁC (REVERT) DỮ LIỆU CŨ
+        // 2a. Trả hàng cũ về kho
+        for (const item of oldInvoice.items) {
+            await Product.findOneAndUpdate(
+                { _id: item.productId, organizationId },
+                { $inc: { stock: item.quantity } } // Cộng lại số lượng cũ
+            ).session(session);
+        }
+        
+        // 2b. Trừ bớt nợ cũ của khách hàng CŨ
+        // (Nợ cũ = Tổng tiền cũ - Đã trả)
+        const oldDebt = oldInvoice.totalAmount - oldInvoice.paidAmount;
+        if (oldDebt > 0) {
+             await Customer.findOneAndUpdate(
+                { _id: oldInvoice.customerId, organizationId },
+                { $inc: { debt: -oldDebt } } // Trừ nợ
+            ).session(session);
+        }
+
+        // 3. ÁP DỤNG (APPLY) DỮ LIỆU MỚI
+        // 3a. Trừ kho theo số lượng MỚI
+        for (const item of items) {
+             const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
+             if (!product) throw new Error(`Sản phẩm ${item.name} không còn tồn tại.`);
+             
+             // Kiểm tra tồn kho có đủ cho số lượng mới không
+             if (product.stock < item.quantity) {
+                 throw new Error(`Sản phẩm ${item.name} không đủ hàng (Tồn: ${product.stock}, Cần: ${item.quantity}).`);
+             }
+             
+             await Product.findOneAndUpdate(
+                { _id: item.productId, organizationId },
+                { $inc: { stock: -item.quantity } } // Trừ số lượng mới
+             ).session(session);
+        }
+
+        // 3b. Tính toán nợ mới (Giữ nguyên số tiền đã trả paidAmount cũ)
+        // (Nợ mới = Tổng tiền mới - Đã trả cũ)
+        const newDebt = totalAmount - oldInvoice.paidAmount;
+        
+        // 3c. Cộng nợ mới cho khách hàng MỚI (thường là khách cũ, nhưng đề phòng trường hợp đổi khách)
+        if (newDebt > 0) {
+            await Customer.findOneAndUpdate(
+                { _id: customerId, organizationId },
+                { $inc: { debt: newDebt } } // Cộng nợ
+            ).session(session);
+        } else if (newDebt < 0) {
+             // Trường hợp sửa thành tiền nhỏ hơn số đã trả -> Trả thừa tiền
+             // Cần xử lý logic trả lại tiền thừa hoặc ghi có (tùy nghiệp vụ). 
+             // Ở đây tạm thời chặn để đơn giản.
+             throw new Error(`Tổng tiền mới (${totalAmount.toLocaleString()}đ) nhỏ hơn số tiền đã thanh toán (${oldInvoice.paidAmount.toLocaleString()}đ). Vui lòng tạo phiếu chi hoàn tiền trước.`);
+        }
+
+        // 4. Cập nhật Hóa đơn
+        const updatedInvoice = await Invoice.findOneAndUpdate(
+            { _id: req.params.id, organizationId },
+            { 
+                items, 
+                totalAmount, 
+                customerId,
+                customerName,
+                // Tự động cập nhật trạng thái dựa trên số liệu mới
+                status: oldInvoice.paidAmount >= totalAmount ? 'Đã thanh toán' : 'Thanh toán một phần'
+            },
+            { new: true, session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+        res.json(updatedInvoice);
+
+    } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({ message: err.message });
     }
 });
 // --- LOGIC XÓA HÓA ĐƠN (Revert Kho & Nợ) ---
