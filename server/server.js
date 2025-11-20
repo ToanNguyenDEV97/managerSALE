@@ -356,6 +356,43 @@ const createTenantCrudEndpoints = (model, modelName) => {
 });
 };
 
+apiRouter.get('/products', async (req, res) => {
+    const { organizationId } = req;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
+
+    try {
+        // Tạo bộ lọc tìm kiếm (Case-insensitive)
+        const query = { 
+            organizationId,
+            $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { sku: { $regex: search, $options: 'i' } }
+            ]
+        };
+
+        // 1. Lấy dữ liệu phân trang
+        const products = await Product.find(query)
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
+            .skip(skip)
+            .limit(limit);
+
+        // 2. Đếm tổng số để tính số trang
+        const total = await Product.countDocuments(query);
+
+        res.json({
+            data: products,
+            pagination: {
+                total,
+                page,
+                totalPages: Math.ceil(total / limit),
+                hasMore: page * limit < total
+            }
+        });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
 createTenantCrudEndpoints(Product, 'products');
 createTenantCrudEndpoints(Supplier, 'suppliers');
 createTenantCrudEndpoints(Quote, 'quotes');
@@ -389,14 +426,30 @@ apiRouter.put('/categories/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 apiRouter.delete('/categories/:id', async (req, res) => {
+    const { organizationId } = req;
     try {
-        const category = await Category.findOne({ _id: req.params.id, organizationId: req.organizationId });
-        if (category) {
-            await Product.updateMany({ category: category.name, organizationId: req.organizationId }, { category: 'Chưa phân loại' });
-            await category.deleteOne();
+        const category = await Category.findOne({ _id: req.params.id, organizationId });
+        
+        if (!category) {
+            return res.status(404).json({ message: 'Không tìm thấy phân loại.' });
         }
+
+        // 1. Kiểm tra ràng buộc: Có sản phẩm nào đang dùng category này không?
+        const productCount = await Product.countDocuments({ category: category.name, organizationId });
+        
+        if (productCount > 0) {
+            // 2. Nếu có, trả về lỗi 400 và thông báo chi tiết
+            return res.status(400).json({ 
+                message: `Không thể xóa! Đang có ${productCount} sản phẩm thuộc phân loại "${category.name}". Vui lòng chuyển các sản phẩm này sang phân loại khác trước khi xóa.` 
+            });
+        }
+
+        // 3. Nếu không có sản phẩm nào, cho phép xóa
+        await category.deleteOne();
         res.status(204).send();
-    } catch (err) { res.status(500).json({ message: err.message }); }
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
 });
 
 
