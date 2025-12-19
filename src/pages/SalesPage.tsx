@@ -4,6 +4,7 @@ import type { InvoiceItem } from '../types';
 import QuickCustomerModal from '../components/QuickCustomerModal';
 import { useAppContext } from '../context/DataContext';
 import CurrencyInput from '../components/CurrencyInput';
+import toast from 'react-hot-toast';
 
 // Import Hooks mới
 import { useProducts } from '../hooks/useProducts';
@@ -53,8 +54,11 @@ const SalesPage: React.FC = () => {
   // --- Handlers ---
   const handleAddToCart = (product: any) => {
       if (product.stock <= 0) {
-          alert('Sản phẩm này đã hết hàng!');
-          return;
+          toast.error(`Sản phẩm "${product.name}" đã hết hàng!`, {
+            duration: 3000, // Tự tắt sau 3 giây
+            icon: '🚫',
+        });
+        return;
       }
       setCart(prev => {
           const existing = prev.find(item => item.productId === product.id);

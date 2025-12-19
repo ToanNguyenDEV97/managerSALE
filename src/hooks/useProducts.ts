@@ -3,10 +3,10 @@ import { api } from '../utils/api';
 import type { Product } from '../types';
 import toast from 'react-hot-toast';
 
-export const useProducts = (page = 1, search = '') => {
+export const useProducts = (page = 1, search = '', category = '') => {
   return useQuery({
-    queryKey: ['products', page, search],
-    queryFn: () => api(`/api/products?page=${page}&limit=10&search=${search}`),
+    queryKey: ['products', page, search, category],
+    queryFn: () => api(`/api/products?page=${page}&limit=10&search=${search}&category=${category !== 'all' ? category : ''}`),
     placeholderData: (previousData) => previousData,
   });
 };
@@ -16,6 +16,14 @@ export const useAllProducts = () => {
     return useQuery({
         queryKey: ['products', 'all'],
         queryFn: () => api('/api/products?limit=2000'), // Lấy nhiều để tính tồn kho
+    });
+};
+
+// Hook lấy danh mục (để đổ vào dropdown phân loại)
+export const useCategories = () => {
+    return useQuery({
+        queryKey: ['categories'],
+        queryFn: () => api('/api/categories'),
     });
 };
 

@@ -85,9 +85,15 @@ const generateToken = (id) => {
 
 const getNextSequence = async (model, prefix, organizationId) => {
     const sequenceField = {
-        'HD': 'invoiceNumber', 'PT': 'transactionNumber', 'PC': 'transactionNumber',
-        'PN': 'purchaseNumber', 'BG': 'quoteNumber', 'DH': 'orderNumber',
-        'PGH': 'deliveryNumber', 'PKK': 'checkNumber'
+        'HD': 'invoiceNumber', 
+        'PT': 'transactionNumber', 
+        'PC': 'transactionNumber',
+        'PN': 'purchaseNumber', 
+        'BG': 'quoteNumber', 
+        'DH': 'orderNumber',
+        'PGH': 'deliveryNumber', 
+        'PKK': 'checkNumber',
+        'SP': 'sku'
     }[prefix];
 
     if (!sequenceField) throw new Error(`Invalid prefix: ${prefix}`);
@@ -376,11 +382,18 @@ createTenantCrudEndpoints(Quote, 'quotes');
 createTenantCrudEndpoints(Order, 'orders');
 
 // --- PRODUCTS (CUSTOM SEARCH) ---
+// --- PRODUCTS (CUSTOM API) ---
+
+// 1. GET: Lấy danh sách (Tìm kiếm + Lọc danh mục)
+// --- PRODUCTS (CUSTOM FULL CRUD) ---
+
+// 1. GET: Lấy danh sách (Có tìm kiếm & Lọc danh mục)
 apiRouter.get('/products', async (req, res) => {
     const { organizationId } = req;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || '';
+    const category = req.query.category || '';
     const skip = (page - 1) * limit;
 
     try {
@@ -391,6 +404,11 @@ apiRouter.get('/products', async (req, res) => {
                 { sku: { $regex: search, $options: 'i' } }
             ]
         };
+        // Logic lọc danh mục
+        if (category && category !== 'all') {
+            query.category = category;
+        }
+
         const products = await Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
         const total = await Product.countDocuments(query);
 
@@ -402,7 +420,48 @@ apiRouter.get('/products', async (req, res) => {
         });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
-createTenantCrudEndpoints(Product, 'products'); // Vẫn dùng Create/Update/Delete chuẩn
+
+// 2. POST: Thêm sản phẩm (Validate kỹ)
+apiRouter.post('/products', async (req, res) => {
+    try {
+        if (!req.body.name) return res.status(400).json({ message: 'Tên sản phẩm là bắt buộc' });
+
+        let sku = req.body.sku;
+        // Nếu không nhập SKU -> Tự sinh mã SP-00001
+        if (!sku) {
+            sku = await getNextSequence(Product, 'SP', req.organizationId);
+        }
+
+        const newProduct = new Product({
+            ...req.body,
+            sku: sku, // Gán SKU tự sinh vào
+            organizationId: req.organizationId
+        });
+        
+        await newProduct.save();
+        res.status(201).json(newProduct);
+    } catch (err) {
+        res.status(500).json({ message: 'Lỗi thêm sản phẩm: ' + err.message });
+    }
+});
+
+// 3. PUT: Cập nhật
+apiRouter.put('/products/:id', async (req, res) => {
+    try {
+        const updated = await Product.findOneAndUpdate({ _id: req.params.id, organizationId: req.organizationId }, req.body, { new: true });
+        res.json(updated);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// 4. DELETE: Xóa
+apiRouter.delete('/products/:id', async (req, res) => {
+    try {
+        await Product.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
+        res.status(204).send();
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// LƯU Ý: ĐÃ XÓA DÒNG createTenantCrudEndpoints(Product...) ĐỂ TRÁNH XUNG ĐỘT
 
 // --- INVOICES (CUSTOM LOGIC) ---
 createTenantCrudEndpoints(Invoice, 'invoices'); // GET/POST chuẩn
@@ -506,50 +565,80 @@ apiRouter.delete('/customers/:id', async (req, res) => {
 // --- SALES (POS) ---
 apiRouter.post('/sales', async (req, res) => {
     const { organizationId } = req;
+    // Sử dụng Session để đảm bảo an toàn dữ liệu (giống như bạn đã làm ở phần DELETE)
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const { customerId, items, totalAmount, paymentAmount, saleType } = req.body;
+        const { customerId, items, totalAmount, paymentAmount } = req.body;
         
-        const customer = await Customer.findOne({ _id: customerId, organizationId });
-        if (!customer) return res.status(404).json({ message: 'Khách hàng không tồn tại' });
+        const customer = await Customer.findOne({ _id: customerId, organizationId }).session(session);
+        if (!customer) throw new Error('Khách hàng không tồn tại');
         
-        const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
-        
-        // Trừ kho & tạo hóa đơn
+        // --- BƯỚC 1: KIỂM TRA & TRỪ KHO ---
         for (const item of items) {
-             await Product.findOneAndUpdate({ _id: item.productId, organizationId }, { $inc: { stock: -item.quantity } });
+             const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
+             
+             if (!product) throw new Error(`Sản phẩm ${item.productName || item.productId} không tồn tại.`);
+             
+             // LOGIC MỚI: Kiểm tra số lượng tồn
+             if (product.stock < item.quantity) {
+                 throw new Error(`Sản phẩm "${product.name}" không đủ hàng! Tồn: ${product.stock}, Mua: ${item.quantity}`);
+             }
+
+             // Nếu đủ hàng thì trừ
+             product.stock -= item.quantity;
+             await product.save({ session });
         }
         
+        // --- BƯỚC 2: TẠO HÓA ĐƠN ---
+        const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
         const status = paymentAmount >= totalAmount ? 'Đã thanh toán' : (paymentAmount > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán');
-        const newInvoice = await new Invoice({
-            invoiceNumber, customerId, customerName: customer.name,
+        
+        const newInvoice = new Invoice({
+            invoiceNumber, 
+            customerId, 
+            customerName: customer.name,
             issueDate: new Date().toISOString().split('T')[0],
-            items, totalAmount, paidAmount: paymentAmount, status, organizationId
-        }).save();
+            items, 
+            totalAmount, 
+            paidAmount: paymentAmount, 
+            status, 
+            organizationId
+        });
+        await newInvoice.save({ session });
 
-        // Cộng nợ (Tổng tiền - Đã trả)
+        // --- BƯỚC 3: CẬP NHẬT CÔNG NỢ & PHIẾU THU ---
         const debtToAdd = totalAmount - paymentAmount;
         if (debtToAdd > 0) {
-            await Customer.findByIdAndUpdate(customerId, { $inc: { debt: debtToAdd } });
+            await Customer.findByIdAndUpdate(customerId, { $inc: { debt: debtToAdd } }).session(session);
         }
 
-        // Tạo phiếu thu nếu có trả tiền
         let savedVoucher = null;
         if (paymentAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
-            savedVoucher = await new CashFlowTransaction({
+            savedVoucher = new CashFlowTransaction({
                 transactionNumber, type: 'thu',
                 date: new Date().toISOString().split('T')[0],
                 amount: paymentAmount,
                 description: `Thanh toán cho hóa đơn ${invoiceNumber}`,
                 payerReceiverName: customer.name, category: 'Thu nợ KH', organizationId
-            }).save();
+            });
+            await savedVoucher.save({ session });
         }
         
+        await session.commitTransaction();
         res.status(201).json({ 
             savedInvoice: newInvoice, 
             voucherId: savedVoucher ? savedVoucher.id : null 
         });
-    } catch (err) { res.status(500).json({ message: err.message }); }
+
+    } catch (err) { 
+        await session.abortTransaction();
+        res.status(400).json({ message: err.message }); // Trả về 400 để Frontend hiển thị thông báo lỗi
+    } finally {
+        session.endSession();
+    }
 });
 
 // --- PAYMENTS ---
@@ -583,10 +672,10 @@ apiRouter.post('/invoices/:id/payment', async (req, res) => {
 });
 
 // --- CATEGORIES ---
-createTenantCrudEndpoints(Category, 'categories');
+
 apiRouter.put('/categories/:id', async (req, res) => {
-    // Override PUT để update sản phẩm liên quan
     try {
+        // Logic cập nhật tên danh mục trong cả bảng Product
         const oldCat = await Category.findOne({ _id: req.params.id, organizationId: req.organizationId });
         if (oldCat && oldCat.name !== req.body.name) {
              await Product.updateMany({ category: oldCat.name, organizationId: req.organizationId }, { category: req.body.name });
@@ -595,21 +684,123 @@ apiRouter.put('/categories/:id', async (req, res) => {
         res.json(newCat);
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 apiRouter.delete('/categories/:id', async (req, res) => {
      try {
         const cat = await Category.findOne({ _id: req.params.id, organizationId: req.organizationId });
         if (!cat) return res.status(404).json({ message: 'Not found' });
         
+        // KIỂM TRA: Có sản phẩm thì không cho xóa
         const count = await Product.countDocuments({ category: cat.name, organizationId: req.organizationId });
-        if (count > 0) return res.status(400).json({ message: `Đang có ${count} sản phẩm thuộc danh mục này.` });
+        if (count > 0) return res.status(400).json({ message: `Không thể xóa! Đang có ${count} sản phẩm thuộc danh mục này.` });
 
         await cat.deleteOne();
         res.status(204).send();
      } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// --- PURCHASES ---
-createTenantCrudEndpoints(Purchase, 'purchases'); // Logic trừ kho/cộng nợ NCC nên viết thêm ở đây nếu cần
+// Đưa dòng này xuống CUỐI CÙNG
+createTenantCrudEndpoints(Category, 'categories');
+
+// --- PURCHASES (NHẬP HÀNG) ---
+// GET: Vẫn dùng logic lấy danh sách cơ bản
+apiRouter.get('/purchases', async (req, res) => {
+    const { organizationId } = req;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    try {
+        const data = await Purchase.find({ organizationId }).sort({ createdAt: -1 }).skip(skip).limit(limit);
+        const total = await Purchase.countDocuments({ organizationId });
+        res.json({ data, total, page, totalPages: Math.ceil(total / limit) });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST: Tạo phiếu nhập + Cộng kho + Tính nợ NCC
+apiRouter.post('/purchases', async (req, res) => {
+    const { organizationId } = req;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { supplierId, items, totalAmount, paidAmount, discount, notes } = req.body;
+
+        // 1. Kiểm tra Nhà cung cấp
+        const supplier = await Supplier.findOne({ _id: supplierId, organizationId }).session(session);
+        if (!supplier) throw new Error('Nhà cung cấp không tồn tại');
+
+        // 2. CỘNG TỒN KHO
+        for (const item of items) {
+             // Tìm sản phẩm
+             const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
+             if (!product) throw new Error(`Sản phẩm ${item.productId} không tồn tại`);
+
+             // Cộng số lượng nhập vào kho
+             product.stock += item.quantity;
+             
+             // (Nâng cao: Có thể cập nhật lại giá vốn (Cost Price) trung bình tại đây nếu muốn)
+             // product.costPrice = ((product.stock cũ * giá cũ) + (sl nhập * giá nhập)) / tổng sl...
+             
+             await product.save({ session });
+        }
+
+        // 3. TẠO PHIẾU NHẬP
+        const purchaseNumber = await getNextSequence(Purchase, 'PN', organizationId);
+        const status = paidAmount >= totalAmount ? 'Đã thanh toán' : (paidAmount > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán');
+
+        const newPurchase = new Purchase({
+            purchaseNumber,
+            supplierId,
+            supplierName: supplier.name,
+            purchaseDate: new Date().toISOString().split('T')[0],
+            items,
+            totalAmount,
+            paidAmount,
+            discount: discount || 0,
+            status,
+            notes,
+            organizationId
+        });
+        await newPurchase.save({ session });
+
+        // 4. CẬP NHẬT CÔNG NỢ NHÀ CUNG CẤP (Mình nợ người ta -> Tăng nợ)
+        const debtToAdd = totalAmount - paidAmount;
+        if (debtToAdd > 0) {
+             // Lưu ý: Logic nợ NCC thường là số dương (Amount Payable)
+             await Supplier.findByIdAndUpdate(supplierId, { $inc: { debt: debtToAdd } }).session(session);
+        }
+
+        // 5. TẠO PHIẾU CHI (Nếu có trả tiền ngay lúc nhập)
+        let savedVoucher = null;
+        if (paidAmount > 0) {
+            const transactionNumber = await getNextSequence(CashFlowTransaction, 'PC', organizationId); // PC = Phiếu Chi
+            savedVoucher = new CashFlowTransaction({
+                transactionNumber, 
+                type: 'chi', // Loại là Chi tiền
+                date: new Date().toISOString().split('T')[0],
+                amount: paidAmount,
+                description: `Thanh toán nhập hàng phiếu ${purchaseNumber}`,
+                payerReceiverName: supplier.name, 
+                category: 'Trả NCC', 
+                organizationId
+            });
+            await savedVoucher.save({ session });
+        }
+
+        await session.commitTransaction();
+        res.status(201).json({ 
+            newPurchase, 
+            voucherId: savedVoucher ? savedVoucher.id : null 
+        });
+
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(400).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
+});
 
 // --- DELIVERIES ---
 createTenantCrudEndpoints(Delivery, 'deliveries');

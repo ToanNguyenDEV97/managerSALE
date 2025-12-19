@@ -176,7 +176,15 @@ const App: React.FC = () => {
         <QueryClientProvider client={queryClient}>
             <DataProvider>
                 <MainApp />
-                <Toaster position="top-right" />
+                <Toaster 
+                    position="top-right" 
+                    toastOptions={{
+                    className: 'dark:bg-slate-800 dark:text-white',
+                    style: {
+                        zIndex: 9999,
+                    },
+                    }} 
+                />
             </DataProvider>
         </QueryClientProvider>
     );
