@@ -3,10 +3,15 @@ import { FiPlus, FiEdit, FiTrash2, FiPrinter, FiLoader } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import Pagination from '../components/Pagination';
 import ConfirmationModal from '../components/ConfirmationModal';
-import { useQuotes, useDeleteQuote } from '../hooks/useQuotes'; // Import Hook
+import { useQuotes, useDeleteQuote } from '../hooks/useQuotes';
+
+// --- 1. NHỚ IMPORT MODAL VÀO ĐÂY ---
+import QuoteModal from '../components/QuoteModal'; 
+// -----------------------------------
 
 const QuotesPage: React.FC = () => {
-    const { setEditingQuote, setPrintingQuoteId } = useAppContext();
+    // Lấy thêm editingQuote để kiểm tra trạng thái
+    const { setEditingQuote, setPrintingQuoteId, editingQuote } = useAppContext(); 
     const [page, setPage] = useState(1);
     const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
     
@@ -28,6 +33,7 @@ const QuotesPage: React.FC = () => {
 
     return (
         <div className="space-y-6 animate-fade-in">
+            {/* ... (Phần Header và Table giữ nguyên không đổi) ... */}
             <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white">Báo giá</h2>
                 <button onClick={() => setEditingQuote('new')} className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium shadow-md">
@@ -67,6 +73,7 @@ const QuotesPage: React.FC = () => {
                 <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={totalItems} itemsPerPage={10} />
             </div>
             
+            {/* Modal Xác nhận xóa (Đã có) */}
             {quoteToDelete && (
                 <ConfirmationModal 
                     isOpen={!!quoteToDelete} 
@@ -77,6 +84,17 @@ const QuotesPage: React.FC = () => {
                     Bạn có chắc chắn muốn xóa báo giá <strong>{quoteToDelete.quoteNumber}</strong>?
                 </ConfirmationModal>
             )}
+
+            {/* --- 2. THÊM ĐOẠN NÀY ĐỂ HIỆN MODAL TẠO BÁO GIÁ --- */}
+            {(editingQuote === 'new' || editingQuote?._id || (editingQuote && 'id' in editingQuote)) && (
+                <QuoteModal 
+                    isOpen={true}
+                    onClose={() => setEditingQuote(null)}
+                    // Nếu Modal cần truyền prop quoteData, hãy bỏ comment dòng dưới
+                    // quoteData={editingQuote === 'new' ? null : editingQuote}
+                />
+            )}
+            {/* -------------------------------------------------- */}
         </div>
     );
 };

@@ -376,9 +376,68 @@ const createTenantCrudEndpoints = (model, modelName) => {
     });
 };
 
-// Áp dụng CRUD chuẩn cho các model đơn giản
-createTenantCrudEndpoints(Supplier, 'suppliers');
-createTenantCrudEndpoints(Quote, 'quotes');
+// --- QUOTES (BÁO GIÁ) - ĐÃ SỬA ---
+
+// 1. GET: Lấy danh sách (Giữ nguyên logic phân trang)
+apiRouter.get('/quotes', async (req, res) => {
+    const { organizationId } = req;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 1000;
+    const skip = (page - 1) * limit;
+
+    try {
+        const data = await Quote.find({ organizationId })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+        const total = await Quote.countDocuments({ organizationId });
+        
+        res.json({ data, total, page, totalPages: Math.ceil(total / limit) });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// 2. POST: Tạo mới (QUAN TRỌNG: Thêm logic sinh mã BG-xxxxx)
+apiRouter.post('/quotes', async (req, res) => {
+    try {
+        const { organizationId } = req;
+        
+        // --- ĐOẠN MỚI THÊM: Sinh mã tự động ---
+        const quoteNumber = await getNextSequence(Quote, 'BG', organizationId);
+        // ---------------------------------------
+
+        const newQuote = new Quote({ 
+            ...req.body, 
+            quoteNumber: quoteNumber, // Gắn mã vừa sinh vào
+            organizationId 
+        });
+        
+        await newQuote.save();
+        res.status(201).json(newQuote);
+    } catch (err) { 
+        console.error("Lỗi tạo báo giá:", err);
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// 3. PUT & DELETE (Giữ nguyên logic chuẩn)
+apiRouter.put('/quotes/:id', async (req, res) => {
+    try {
+        const doc = await Quote.findOneAndUpdate(
+            { _id: req.params.id, organizationId: req.organizationId }, 
+            req.body, 
+            { new: true }
+        );
+        res.json(doc);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+apiRouter.delete('/quotes/:id', async (req, res) => {
+    try {
+        await Quote.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
+        res.status(204).send();
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 createTenantCrudEndpoints(Order, 'orders');
 
 // --- PRODUCTS (CUSTOM SEARCH) ---
