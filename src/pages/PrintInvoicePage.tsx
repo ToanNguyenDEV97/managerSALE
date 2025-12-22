@@ -1,161 +1,164 @@
 import React, { useEffect, useMemo } from 'react';
-import { FiPrinter } from 'react-icons/fi';
+import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../utils/api';
 import { useAppContext } from '../context/DataContext';
-import { useInvoices } from '../hooks/useInvoices'; // Import Hook lấy dữ liệu
+import { FiPrinter, FiArrowLeft } from 'react-icons/fi';
+
+// Hàm đọc số thành chữ (đơn giản)
+const docSoThanhChu = (so: number): string => {
+    if (!so) return 'không đồng';
+    return so.toLocaleString('vi-VN') + ' đồng'; 
+    // Lưu ý: Để đọc chính xác hàng tỷ/triệu, bạn nên dùng thư viện 'n-2-vi'
+};
 
 const PrintInvoicePage: React.FC = () => {
-    // 1. Chỉ lấy ID và Settings từ Context
-    const { printingInvoiceId, setPrintingInvoiceId, settings } = useAppContext();
+    const { id } = useParams<{ id: string }>();
+    const { settings } = useAppContext(); // Lấy thông tin công ty từ cấu hình
     
-    // 2. Tự lấy danh sách hóa đơn từ API
-    const { data: invoicesData } = useInvoices(1);
-    const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData?.data || []);
-    
-    // 3. Tìm hóa đơn cần in
-    const invoice = useMemo(() => {
-        if (!printingInvoiceId) return null;
-        return invoices.find((inv: any) => inv.id === printingInvoiceId);
-    }, [invoices, printingInvoiceId]);
+    const { data: invoice, isLoading } = useQuery({
+        queryKey: ['invoice', id],
+        queryFn: () => api(`/api/invoices/${id}`),
+        enabled: !!id
+    });
 
-    // Xử lý sự kiện sau khi in xong
     useEffect(() => {
-        const handleAfterPrint = () => {
-            setPrintingInvoiceId(null);
-        };
-        window.addEventListener('afterprint', handleAfterPrint);
-        return () => window.removeEventListener('afterprint', handleAfterPrint);
-    }, [setPrintingInvoiceId]);
+        if (!isLoading && invoice) {
+            document.title = `Hoa_don_${invoice.invoiceNumber}`;
+            setTimeout(() => {
+                window.print();
+            }, 800);
+        }
+    }, [isLoading, invoice]);
 
-    if (!invoice) {
-        return (
-            <div className="flex justify-center items-center h-screen text-slate-500">
-                Đang tải dữ liệu hóa đơn...
-            </div>
-        );
-    }
+    if (isLoading) return <div className="flex items-center justify-center h-screen text-slate-500">Đang tạo bản in...</div>;
+    if (!invoice) return <div className="flex items-center justify-center h-screen text-red-500">Không tìm thấy hóa đơn!</div>;
 
-    const totals = {
-        total: invoice.totalAmount,
-        // Tính thuế sơ bộ (nếu item không có vat riêng thì lấy mặc định)
-        vatAmount: invoice.items.reduce((acc: number, item: any) => {
-            const itemTotal = item.price * item.quantity;
-            // Giả sử price đã bao gồm VAT, tính ngược ra VAT
-            // Hoặc nếu price chưa VAT: return acc + (itemTotal * (item.vat || 0) / 100);
-            // Ở đây dùng logic đơn giản:
-            return acc + (itemTotal * (item.vat || 0) / 100); 
-        }, 0),
-    };
+    const debt = invoice.totalAmount - invoice.paidAmount;
 
     return (
-        <div className="bg-white min-h-screen text-slate-900 font-sans p-8 md:p-12">
-            <style>
-                {`
-                    @media print {
-                        @page { margin: 0; size: auto; }
-                        body { margin: 1.6cm; -webkit-print-color-adjust: exact; }
-                        .no-print { display: none !important; }
-                    }
-                `}
-            </style>
-
-            <div className="max-w-3xl mx-auto border border-slate-200 p-8 shadow-sm print:border-0 print:shadow-none print:p-0">
-                {/* Header */}
-                <div className="flex justify-between items-start mb-8">
-                    <div>
-                        {settings.logo && <img src={settings.logo} alt="Logo" className="h-16 object-contain mb-2" />}
-                        <h1 className="text-2xl font-bold text-primary-700 uppercase">{settings.companyName}</h1>
-                        <p className="text-sm text-slate-600 mt-1 max-w-xs">{settings.address}</p>
-                        <p className="text-sm text-slate-600">SĐT: {settings.phone}</p>
-                    </div>
-                    <div className="text-right">
-                        <h2 className="text-3xl font-bold text-slate-800 uppercase tracking-wide">Hóa đơn</h2>
-                        <p className="text-sm text-slate-500 mt-1">Số: <span className="font-semibold text-slate-900">{invoice.invoiceNumber}</span></p>
-                        <p className="text-sm text-slate-500">Ngày: {invoice.issueDate}</p>
-                    </div>
-                </div>
-
-                {/* Customer Info */}
-                <div className="mb-8 p-4 bg-slate-50 rounded-lg print:bg-transparent print:p-0 print:border print:border-slate-200">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase mb-2">Khách hàng</h3>
-                    <p className="font-bold text-lg">{invoice.customerName}</p>
-                    {/* Các thông tin khác của khách nếu có trong invoice object */}
-                </div>
-
-                {/* Table */}
-                <div className="mb-8">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b-2 border-slate-800">
-                                <th className="py-2 text-left w-12">STT</th>
-                                <th className="py-2 text-left">Tên sản phẩm</th>
-                                <th className="py-2 text-center w-20">SL</th>
-                                <th className="py-2 text-right w-32">Đơn giá</th>
-                                <th className="py-2 text-right w-32">Thành tiền</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {invoice.items.map((item: any, index: number) => (
-                                <tr key={index} className="border-b border-slate-200">
-                                    <td className="py-3 text-left">{index + 1}</td>
-                                    <td className="py-3 font-medium">{item.name}</td>
-                                    <td className="py-3 text-center">{item.quantity} {item.unit}</td>
-                                    <td className="py-3 text-right">{item.price.toLocaleString('vi-VN')}</td>
-                                    <td className="py-3 text-right font-bold">{(item.price * item.quantity).toLocaleString('vi-VN')}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Totals */}
-                <div className="flex justify-end">
-                    <div className="w-64 space-y-2">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-600">Thành tiền:</span>
-                            <span className="font-medium">{totals.total.toLocaleString('vi-VN')} đ</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-600">Thuế (VAT):</span>
-                            <span className="font-medium">Đã bao gồm</span>
-                        </div>
-                        <div className="flex justify-between text-xl font-bold border-t border-slate-300 pt-2 mt-2">
-                            <span>Tổng cộng:</span>
-                            <span className="text-primary-700">{totals.total.toLocaleString('vi-VN')} đ</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-green-600 pt-1">
-                            <span>Đã thanh toán:</span>
-                            <span>{invoice.paidAmount.toLocaleString('vi-VN')} đ</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Signature */}
-                <div className="mt-16 grid grid-cols-2 gap-8 text-center break-inside-avoid">
-                    <div>
-                        <p className="font-bold text-sm uppercase">Người mua hàng</p>
-                        <p className="text-xs text-slate-500 italic">(Ký, ghi rõ họ tên)</p>
-                    </div>
-                    <div>
-                        <p className="font-bold text-sm uppercase">Người bán hàng</p>
-                        <p className="text-xs text-slate-500 italic">(Ký, ghi rõ họ tên)</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Action Buttons (No Print) */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 flex justify-center gap-4 no-print shadow-lg">
+        <div className="bg-slate-100 min-h-screen py-8 print:bg-white print:p-0">
+            {/* Thanh công cụ (Ẩn khi in) */}
+            <div className="max-w-[210mm] mx-auto mb-6 flex justify-between items-center print:hidden px-4">
                 <button 
-                    onClick={() => setPrintingInvoiceId(null)}
-                    className="px-6 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium"
+                    onClick={() => window.close()} 
+                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium"
                 >
-                    Quay lại
+                    <FiArrowLeft /> Quay lại
                 </button>
                 <button 
-                    onClick={() => window.print()}
-                    className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium shadow-md"
+                    onClick={() => window.print()} 
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow-md font-bold transition-all"
                 >
                     <FiPrinter /> In Hóa Đơn
                 </button>
+            </div>
+
+            {/* --- TRANG GIẤY A4 --- */}
+            <div className="bg-white max-w-[210mm] mx-auto p-[10mm] shadow-xl print:shadow-none print:w-full print:max-w-none print:p-0">
+                
+                {/* 1. HEADER */}
+                <div className="flex justify-between items-start mb-8 border-b-2 border-slate-800 pb-6">
+                    <div className="w-2/3">
+                        {settings?.logo && (
+                            <img src={settings.logo} alt="Logo" className="h-16 object-contain mb-3" />
+                        )}
+                        <h1 className="text-xl font-bold text-blue-800 uppercase">{settings?.companyName || 'TÊN CÔNG TY CỦA BẠN'}</h1>
+                        <p className="text-sm text-slate-700 mt-1"><b>Địa chỉ:</b> {settings?.address || 'Chưa cập nhật địa chỉ'}</p>
+                        <p className="text-sm text-slate-700"><b>Điện thoại:</b> {settings?.phone || '...'}</p>
+                    </div>
+                    <div className="w-1/3 text-right">
+                        <h2 className="text-2xl font-bold text-red-600 uppercase tracking-wide">HÓA ĐƠN</h2>
+                        <h3 className="text-lg font-bold text-slate-800 uppercase">BÁN HÀNG</h3>
+                        <div className="mt-2 text-sm text-slate-600">
+                            <p>Số: <b className="text-black">{invoice.invoiceNumber}</b></p>
+                            <p>Ngày: {new Date(invoice.issueDate).toLocaleDateString('vi-VN')}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. THÔNG TIN KHÁCH HÀNG */}
+                <div className="mb-6 text-sm">
+                    <div className="flex mb-1">
+                        <span className="w-32 font-bold text-slate-700">Khách hàng:</span>
+                        <span className="uppercase font-semibold">{invoice.customerName}</span>
+                    </div>
+                    <div className="flex mb-1">
+                        <span className="w-32 font-bold text-slate-700">Địa chỉ:</span>
+                        <span>{invoice.customerAddress || '...'}</span>
+                    </div>
+                    <div className="flex mb-1">
+                        <span className="w-32 font-bold text-slate-700">Điện thoại:</span>
+                        <span>{invoice.customerPhone || '...'}</span>
+                    </div>
+                    <div className="flex">
+                        <span className="w-32 font-bold text-slate-700">Ghi chú:</span>
+                        <span className="italic text-slate-500">{invoice.note || 'Không có'}</span>
+                    </div>
+                </div>
+
+                {/* 3. BẢNG HÀNG HÓA */}
+                <table className="w-full text-sm border-collapse border border-slate-300 mb-6">
+                    <thead>
+                        <tr className="bg-slate-100 text-slate-800 font-bold uppercase text-xs">
+                            <th className="border border-slate-300 py-2 px-2 w-12 text-center">STT</th>
+                            <th className="border border-slate-300 py-2 px-2 text-left">Tên hàng hóa / Dịch vụ</th>
+                            <th className="border border-slate-300 py-2 px-2 w-20 text-center">ĐVT</th>
+                            <th className="border border-slate-300 py-2 px-2 w-20 text-center">SL</th>
+                            <th className="border border-slate-300 py-2 px-2 w-32 text-right">Đơn giá</th>
+                            <th className="border border-slate-300 py-2 px-2 w-32 text-right">Thành tiền</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {invoice.items.map((item: any, index: number) => (
+                            <tr key={index} className="odd:bg-white even:bg-slate-50/50">
+                                <td className="border border-slate-300 py-2 px-2 text-center">{index + 1}</td>
+                                <td className="border border-slate-300 py-2 px-2 font-medium">{item.name}</td>
+                                <td className="border border-slate-300 py-2 px-2 text-center">{item.unit || 'Cái'}</td>
+                                <td className="border border-slate-300 py-2 px-2 text-center font-bold">{item.quantity}</td>
+                                <td className="border border-slate-300 py-2 px-2 text-right">{item.price.toLocaleString('vi-VN')}</td>
+                                <td className="border border-slate-300 py-2 px-2 text-right font-bold">{ (item.price * item.quantity).toLocaleString('vi-VN') }</td>
+                            </tr>
+                        ))}
+                        
+                        {/* Dòng tổng cộng */}
+                        <tr className="font-bold text-slate-800 bg-slate-50">
+                            <td colSpan={5} className="border border-slate-300 py-2 px-4 text-right uppercase text-xs">Tổng tiền hàng:</td>
+                            <td className="border border-slate-300 py-2 px-2 text-right text-base">{invoice.totalAmount.toLocaleString('vi-VN')}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan={5} className="border border-slate-300 py-2 px-4 text-right font-bold text-slate-600 text-xs">Thanh toán:</td>
+                            <td className="border border-slate-300 py-2 px-2 text-right font-bold text-green-600">{invoice.paidAmount?.toLocaleString('vi-VN')}</td>
+                        </tr>
+                        {debt > 0 && (
+                            <tr>
+                                <td colSpan={5} className="border border-slate-300 py-2 px-4 text-right font-bold text-slate-600 text-xs">Còn nợ:</td>
+                                <td className="border border-slate-300 py-2 px-2 text-right font-bold text-red-600">{debt.toLocaleString('vi-VN')}</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+
+                {/* 4. TIỀN BẰNG CHỮ */}
+                <div className="mb-8 text-sm">
+                    <p className="font-bold">Bằng chữ: <span className="italic font-normal text-slate-700">{docSoThanhChu(invoice.totalAmount)}</span>.</p>
+                </div>
+
+                {/* 5. CHỮ KÝ */}
+                <div className="grid grid-cols-2 gap-10 mt-10 text-center break-inside-avoid">
+                    <div>
+                        <p className="font-bold uppercase text-sm mb-1">Người mua hàng</p>
+                        <p className="text-xs italic text-slate-500 mb-16">(Ký, ghi rõ họ tên)</p>
+                    </div>
+                    <div>
+                        <p className="font-bold uppercase text-sm mb-1">Người bán hàng</p>
+                        <p className="text-xs italic text-slate-500 mb-16">(Ký, đóng dấu, ghi rõ họ tên)</p>
+                    </div>
+                </div>
+
+                <div className="text-center text-xs text-slate-400 mt-10 italic">
+                    (Cần kiểm tra đối chiếu khi lập, giao, nhận hóa đơn)
+                </div>
             </div>
         </div>
     );

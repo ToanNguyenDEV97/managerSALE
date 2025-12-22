@@ -1,58 +1,104 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
-import type { Product } from '../types';
-import toast from 'react-hot-toast';
 
-export const useProducts = (page = 1, search = '', category = '') => {
-  return useQuery({
-    queryKey: ['products', page, search, category],
-    queryFn: () => api(`/api/products?page=${page}&limit=10&search=${search}&category=${category !== 'all' ? category : ''}`),
-    placeholderData: (previousData) => previousData,
-  });
+// --- PRODUCT HOOKS ---
+
+export const useProducts = (page: number = 1, limit: number = 10, search: string = '') => {
+    return useQuery({
+        queryKey: ['products', page, limit, search],
+        queryFn: () => api(`/api/products?page=${page}&limit=${limit}&search=${search}`),
+        keepPreviousData: true,
+    } as any);
 };
 
-// Thêm hook này
 export const useAllProducts = () => {
     return useQuery({
         queryKey: ['products', 'all'],
-        queryFn: () => api('/api/products?limit=2000'), // Lấy nhiều để tính tồn kho
-    });
+        queryFn: () => api(`/api/products?page=1&limit=10000`),
+    } as any);
 };
 
-// Hook lấy danh mục (để đổ vào dropdown phân loại)
-export const useCategories = () => {
+export const useProduct = (id: string) => {
     return useQuery({
-        queryKey: ['categories'],
-        queryFn: () => api('/api/categories'),
+        queryKey: ['product', id],
+        queryFn: () => api(`/api/products/${id}`),
+        enabled: !!id,
     });
 };
 
-export const useSaveProduct = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (product: Product) => {
-      if (product.id) {
-        return api(`/api/products/${product.id}`, { method: 'PUT', body: JSON.stringify(product) });
-      } else {
-        return api('/api/products', { method: 'POST', body: JSON.stringify(product) });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Lưu sản phẩm thành công!');
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+export const useCreateProduct = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: any) => api('/api/products', { method: 'POST', body: JSON.stringify(data) }),
+        onSuccess: () => queryClient.invalidateQueries(['products'] as any),
+    });
+};
+
+export const useUpdateProduct = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: any) => api(`/api/products/${data.id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        onSuccess: () => queryClient.invalidateQueries(['products'] as any),
+    });
 };
 
 export const useDeleteProduct = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => api(`/api/products/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Đã xóa sản phẩm');
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => api(`/api/products/${id}`, { method: 'DELETE' }),
+        onSuccess: () => queryClient.invalidateQueries(['products'] as any),
+    });
+};
+
+// --- CATEGORY HOOKS (MỚI CẬP NHẬT) ---
+
+// 1. Lấy danh sách danh mục từ Server
+export const useCategories = () => {
+    return useQuery({
+        queryKey: ['categories'],
+        queryFn: async () => {
+            const res = await api('/api/categories?limit=100'); // Lấy tối đa 100 danh mục
+            return res.data || []; // API trả về { data: [], ... }
+        }
+    } as any);
+};
+
+// 2. Tạo danh mục mới
+export const useCreateCategory = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (name: string) => api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+        onSuccess: () => queryClient.invalidateQueries(['categories'] as any),
+    });
+};
+
+// 3. Sửa danh mục (Backend sẽ tự cập nhật tên danh mục trong các Sản phẩm liên quan)
+export const useUpdateCategory = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, name }: { id: string, name: string }) => 
+            api(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+        onSuccess: () => {
+            queryClient.invalidateQueries(['categories'] as any);
+            queryClient.invalidateQueries(['products'] as any); // Reload cả sản phẩm vì tên danh mục thay đổi
+        },
+    });
+};
+
+// 4. Xóa danh mục (Sẽ báo lỗi nếu còn sản phẩm)
+export const useDeleteCategory = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => api(`/api/categories/${id}`, { method: 'DELETE' }),
+        onSuccess: () => queryClient.invalidateQueries(['categories'] as any),
+    });
+};
+
+// --- STOCK HISTORY HOOK ---
+export const useStockHistory = (productId: string) => {
+    return useQuery({
+        queryKey: ['stock-history', productId],
+        queryFn: () => api(`/api/stock-history/${productId}`),
+        enabled: !!productId, // Chỉ gọi khi có ID sản phẩm
+    } as any);
 };

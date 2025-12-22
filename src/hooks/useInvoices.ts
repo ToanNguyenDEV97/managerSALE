@@ -29,12 +29,24 @@ export const useSaveInvoice = () => {
        // Endpoint tạo hóa đơn bán hàng (POS)
        return api('/api/sales', { method: 'POST', body: JSON.stringify(invoiceData) });
     },
-    onSuccess: () => {
+    // [FIX QUAN TRỌNG] Thêm (data, variables) vào ngoặc tròn
+    onSuccess: (data, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] }); // Update list hóa đơn
       queryClient.invalidateQueries({ queryKey: ['products'] }); // Update tồn kho
       queryClient.invalidateQueries({ queryKey: ['customers'] }); // Update công nợ
       queryClient.invalidateQueries({ queryKey: ['cashflow'] });
-      toast.success('Thanh toán thành công!');
+      
+      // Lấy thông tin từ dữ liệu gửi lên (variables)
+      const { paymentAmount, totalAmount } = variables;
+
+      // Logic hiển thị thông báo
+      if (paymentAmount <= 0) {
+          toast.success('Đã lưu đơn nợ thành công! 📝');
+      } else if (paymentAmount < totalAmount) {
+          toast.success(`Đã lưu: Thanh toán một phần (${paymentAmount?.toLocaleString()}đ) ⚠️`);
+      } else {
+          toast.success('Thanh toán thành công! ✅');
+      }
     },
     onError: (err: any) => toast.error(err.message),
   });

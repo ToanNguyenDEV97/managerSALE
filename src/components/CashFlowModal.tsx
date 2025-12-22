@@ -1,125 +1,119 @@
-import React, { useState, useEffect } from 'react';
-import type { CashFlowTransaction } from '../types';
-import { useAppContext } from '../context/DataContext';
-import { useSaveTransaction } from '../hooks/useCashFlow'; // Import Hook
-import { FiLoader } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { FiX, FiSave } from 'react-icons/fi';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { api } from '../utils/api'; // Đảm bảo đường dẫn đúng
+import toast from 'react-hot-toast';
 
-const CashFlowModal: React.FC = () => {
-  const { editingTransaction, setEditingTransaction } = useAppContext();
-  const saveMutation = useSaveTransaction();
+interface CashFlowModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
 
-  if (!editingTransaction) return null;
+const CashFlowModal: React.FC<CashFlowModalProps> = ({ isOpen, onClose }) => {
+    const queryClient = useQueryClient();
+    
+    // State form
+    const [type, setType] = useState<'thu' | 'chi'>('thu');
+    const [amount, setAmount] = useState<number>(0);
+    const [description, setDescription] = useState('');
+    const [payerReceiverName, setPayerReceiverName] = useState(''); // Người nộp/nhận
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const isEditing = typeof editingTransaction === 'object' && 'id' in editingTransaction;
-  const type = isEditing ? editingTransaction.type : (editingTransaction === 'new-thu' ? 'thu' : 'chi');
-  
-  const [formData, setFormData] = useState<Omit<CashFlowTransaction, 'id' | 'transactionNumber'>>({
-    type: type,
-    date: new Date().toISOString().split('T')[0],
-    amount: 0,
-    description: '',
-    payerReceiverName: '',
-    payerReceiverAddress: '',
-    category: type === 'chi' ? 'Chi phí hoạt động' : 'Thu nợ KH',
-    inputVat: 0,
-  });
+    // Hook tạo phiếu (Gọi API có sẵn trong server.js)
+    const createMutation = useMutation({
+        mutationFn: (data: any) => api('/api/cashflow-transactions', { 
+            method: 'POST', 
+            body: JSON.stringify(data) 
+        }),
+        onSuccess: () => {
+            queryClient.invalidateQueries(['cashflow'] as any);
+            toast.success(`Đã lập phiếu ${type === 'thu' ? 'Thu' : 'Chi'} thành công!`);
+            onClose();
+            // Reset form
+            setAmount(0); setDescription(''); setPayerReceiverName('');
+        },
+        onError: (err: any) => toast.error(err.message)
+    });
 
-  useEffect(() => {
-    if (isEditing) {
-      setFormData({ ...editingTransaction, inputVat: editingTransaction.inputVat || 0 });
-    } else {
-      setFormData(prev => ({ ...prev, type: type }));
-    }
-  }, [editingTransaction, type, isEditing]);
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (amount <= 0) return toast.error("Số tiền phải lớn hơn 0");
+        if (!description) return toast.error("Vui lòng nhập lý do");
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === 'amount' || name === 'inputVat' ? parseFloat(value) || 0 : value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const dataToSave = {
-        ...formData,
-        id: isEditing ? editingTransaction.id : undefined
+        // Gửi dữ liệu lên Server
+        createMutation.mutate({
+            type, // 'thu' hoặc 'chi'
+            amount,
+            date,
+            description,
+            payerReceiverName,
+            category: 'Khác', // Mặc định là Khác
+            transactionNumber: `${type === 'thu' ? 'PT' : 'PC'}-${Date.now().toString().slice(-6)}` // Tạm thời sinh mã random, Server sẽ tự sinh mã chuẩn sau nếu bạn cấu hình
+        });
     };
-    try {
-        await saveMutation.mutateAsync(dataToSave);
-        setEditingTransaction(null);
-    } catch (error) {
-        console.error(error);
-    }
-  };
 
-  const labelStyles = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1";
-  const inputStyles = "w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-primary-500";
+    if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-slate-900 bg-opacity-50 z-50 flex justify-center items-center p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className={`p-4 border-b ${type === 'thu' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-          <h3 className={`text-lg font-bold ${type === 'thu' ? 'text-green-800' : 'text-red-800'}`}>
-            {isEditing ? 'Sửa' : 'Lập'} Phiếu {type === 'thu' ? 'Thu' : 'Chi'}
-          </h3>
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
+                
+                {/* Header */}
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Lập Phiếu Thu / Chi</h3>
+                    <button onClick={onClose}><FiX size={24} className="text-slate-500" /></button>
+                </div>
+
+                {/* Body */}
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {/* Loại phiếu (Tab) */}
+                    <div className="flex p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                        <button
+                            type="button"
+                            onClick={() => setType('thu')}
+                            className={`flex-1 py-2 rounded-md font-bold transition-all ${type === 'thu' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
+                        >
+                            Phiếu Thu (Tiền vào)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setType('chi')}
+                            className={`flex-1 py-2 rounded-md font-bold transition-all ${type === 'chi' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
+                        >
+                            Phiếu Chi (Tiền ra)
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Ngày lập</label>
+                            <input type="date" required className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" value={date} onChange={e => setDate(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Số tiền (VNĐ)</label>
+                            <input type="number" required className="w-full border p-2 rounded font-bold text-lg dark:bg-slate-700 dark:border-slate-600" value={amount} onChange={e => setAmount(Number(e.target.value))} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1 dark:text-slate-300">{type === 'thu' ? 'Người nộp tiền' : 'Người nhận tiền'}</label>
+                        <input type="text" className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" placeholder="VD: Nguyễn Văn A" value={payerReceiverName} onChange={e => setPayerReceiverName(e.target.value)} />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1 dark:text-slate-300">Lý do / Diễn giải</label>
+                        <textarea required className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" rows={3} placeholder="VD: Trả tiền điện tháng 12..." value={description} onChange={e => setDescription(e.target.value)} />
+                    </div>
+
+                    <div className="pt-2">
+                        <button type="submit" className={`w-full py-3 text-white font-bold rounded-lg flex justify-center items-center gap-2 ${type === 'thu' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                            <FiSave /> {type === 'thu' ? 'Lưu Phiếu Thu' : 'Lưu Phiếu Chi'}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className={labelStyles}>Ngày lập</label>
-                    <input type="date" name="date" value={formData.date} onChange={handleChange} required className={inputStyles} />
-                </div>
-                <div>
-                    <label className={labelStyles}>Số tiền <span className="text-red-500">*</span></label>
-                    <input type="number" name="amount" value={formData.amount} onChange={handleChange} required min="0" className={`${inputStyles} font-bold text-lg`} />
-                </div>
-            </div>
-
-            <div>
-                <label className={labelStyles}>{type === 'thu' ? 'Người nộp' : 'Người nhận'}</label>
-                <input type="text" name="payerReceiverName" value={formData.payerReceiverName} onChange={handleChange} className={inputStyles} placeholder="Họ tên người nộp/nhận..." />
-            </div>
-
-            <div>
-                <label className={labelStyles}>Phân loại</label>
-                <select name="category" value={formData.category} onChange={handleChange} className={inputStyles}>
-                    {type === 'thu' ? (
-                        <>
-                            <option value="Thu nợ KH">Thu nợ Khách hàng</option>
-                            <option value="Bán hàng">Bán hàng</option>
-                            <option value="Khác">Thu khác</option>
-                        </>
-                    ) : (
-                        <>
-                            <option value="Chi phí hoạt động">Chi phí hoạt động</option>
-                            <option value="Trả NCC">Trả Nhà cung cấp</option>
-                            <option value="Lương">Lương nhân viên</option>
-                            <option value="Khác">Chi khác</option>
-                        </>
-                    )}
-                </select>
-            </div>
-
-            <div>
-                <label className={labelStyles}>Nội dung / Diễn giải</label>
-                <textarea name="description" value={formData.description} onChange={handleChange} rows={3} required className={inputStyles} placeholder="Nhập lý do thu/chi..."></textarea>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 border rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white">Hủy</button>
-                <button 
-                    type="submit" 
-                    disabled={saveMutation.isPending}
-                    className={`flex items-center gap-2 px-6 py-2 text-white rounded-lg font-bold shadow-md ${type === 'thu' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-                >
-                    {saveMutation.isPending ? <FiLoader className="animate-spin"/> : null}
-                    Lưu Phiếu
-                </button>
-            </div>
-        </form>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default CashFlowModal;

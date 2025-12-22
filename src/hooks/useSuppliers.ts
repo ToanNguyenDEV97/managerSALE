@@ -1,46 +1,67 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
-import type { Supplier } from '../types';
-import toast from 'react-hot-toast';
 
-export const useSuppliers = (page = 1, search = '', limit = 10) => {
-  return useQuery({
-    queryKey: ['suppliers', page, search],
-    queryFn: () => api(`/api/suppliers?page=${page}&limit=${limit}&search=${search}`),
-  });
+// 1. Lấy danh sách Nhà cung cấp
+export const useSuppliers = (page: number = 1, limit: number = 1000) => {
+    return useQuery({
+        queryKey: ['suppliers', page, limit],
+        queryFn: () => api(`/api/suppliers?page=${page}&limit=${limit}`),
+        keepPreviousData: true,
+    } as any);
 };
 
-// Dùng cho dropdown chọn nhà cung cấp (lấy tất cả)
-export const useAllSuppliers = () => {
+// 2. Lấy chi tiết 1 Nhà cung cấp
+export const useSupplier = (id: string) => {
     return useQuery({
-        queryKey: ['suppliers', 'all'],
-        queryFn: () => api('/api/suppliers?limit=1000'),
+        queryKey: ['supplier', id],
+        queryFn: () => api(`/api/suppliers/${id}`),
+        enabled: !!id,
     });
 };
 
-export const useSaveSupplier = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (supplier: Partial<Supplier>) => {
-      if (supplier.id) return api(`/api/suppliers/${supplier.id}`, { method: 'PUT', body: JSON.stringify(supplier) });
-      return api('/api/suppliers', { method: 'POST', body: JSON.stringify(supplier) });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success('Lưu nhà cung cấp thành công!');
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+// 3. Tạo mới (Quan trọng: Hàm này đang thiếu dẫn đến lỗi)
+export const useCreateSupplier = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: any) => {
+            return api('/api/suppliers', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['suppliers'] as any);
+        },
+    });
 };
 
+// 4. Cập nhật
+export const useUpdateSupplier = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: any) => {
+            return api(`/api/suppliers/${data.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['suppliers'] as any);
+        },
+    });
+};
+
+// 5. Xóa
 export const useDeleteSupplier = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => api(`/api/suppliers/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success('Đã xóa nhà cung cấp');
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => {
+            return api(`/api/suppliers/${id}`, {
+                method: 'DELETE',
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['suppliers'] as any);
+        },
+    });
 };
