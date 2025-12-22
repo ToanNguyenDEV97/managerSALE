@@ -192,7 +192,7 @@ export interface Settings {
 }
 
 
-export type Page = 'Dashboard' | 'Sales' | 'Products' | 'Customers' | 'Suppliers' | 'Purchases' | 'Quotes' | 'Orders' | 'Invoices' | 'Delivery' | 'CashFlow' | 'Debt' | 'Reports' | 'Tax' | 'Settings' | 'InventoryChecks' | 'Users';
+export type Page = 'Dashboard' | 'Sales' | 'Products' | 'Customers' | 'Suppliers' | 'Purchases' | 'Quotes' | 'Orders' | 'Invoices' | 'Delivery' | 'CashFlow' | 'Debt' | 'Reports' | 'Tax' | 'Settings' | 'InventoryChecks' | 'Users' |'OrderCreate';
 
 export type Theme = 'light' | 'dark';
 

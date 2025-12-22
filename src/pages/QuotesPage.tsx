@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiPlus, FiEdit, FiTrash2, FiPrinter, FiLoader } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiPrinter, FiLoader, FiArrowRightCircle } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import Pagination from '../components/Pagination';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -31,9 +31,17 @@ const QuotesPage: React.FC = () => {
 
     if (isLoading) return <div className="flex justify-center p-10"><FiLoader className="animate-spin" /></div>;
 
+    const convertMutation = useConvertToOrder();
+
+    // Hàm xử lý chuyển đổi
+    const handleConvert = async (quoteId: string, quoteNumber: string) => {
+        if (window.confirm(`Bạn có muốn tạo Đơn hàng từ báo giá ${quoteNumber} không?`)) {
+            await convertMutation.mutateAsync(quoteId);
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* ... (Phần Header và Table giữ nguyên không đổi) ... */}
             <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white">Báo giá</h2>
                 <button onClick={() => setEditingQuote('new')} className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium shadow-md">

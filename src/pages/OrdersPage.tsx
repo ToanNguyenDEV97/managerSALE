@@ -1,158 +1,107 @@
 import React, { useState } from 'react';
-import { FiFileText, FiArrowRight, FiCheckCircle, FiLoader, FiX } from 'react-icons/fi';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../utils/api';
-import { useWorkflow } from '../hooks/useWorkflow'; // Import Hook vừa tạo
+import { FiPlus, FiEye, FiSearch, FiFileText, FiFilter } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
+import { useOrders } from '../hooks/useOrders';
 import Pagination from '../components/Pagination';
 
+// Thêm import hook context
+import { useAppContext } from '../context/DataContext';
+
 const OrdersPage: React.FC = () => {
+    const { setCurrentPage } = useAppContext();
     const [page, setPage] = useState(1);
+    const { data: ordersData, isLoading } = useOrders(page);
     
-    // State cho Modal chuyển đổi
-    const [convertingOrder, setConvertingOrder] = useState<any>(null);
-    const [paymentAmount, setPaymentAmount] = useState<number>(0);
-
-    // Lấy dữ liệu Đơn hàng
-    const { data: ordersData, isLoading } = useQuery({
-        queryKey: ['orders', page],
-        queryFn: () => api(`/api/orders?page=${page}&limit=10`),
-    });
-    
-    const { orderToInvoice } = useWorkflow();
-
     const orders = ordersData?.data || [];
     const totalPages = ordersData?.totalPages || 1;
 
-    // Xử lý khi bấm nút "Xuất HĐ"
-    const handleOpenConvertModal = (order: any) => {
-        setConvertingOrder(order);
-        setPaymentAmount(0); // Mặc định là 0 hoặc order.totalAmount tùy bạn
-    };
-
-    // Gọi API chuyển đổi
-    const handleConfirmConvert = async () => {
-        if (!convertingOrder) return;
-        await orderToInvoice.mutateAsync({
-            orderId: convertingOrder.id,
-            paymentAmount: paymentAmount
-        });
-        setConvertingOrder(null); // Đóng modal
+    // Hàm tô màu trạng thái cho đẹp
+    const getStatusColor = (status: string) => {
+        switch(status) {
+            case 'Mới': return 'bg-blue-100 text-blue-700 border-blue-200';
+            case 'Đang xử lý': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+            case 'Đang giao': return 'bg-purple-100 text-purple-700 border-purple-200';
+            case 'Hoàn thành': return 'bg-green-100 text-green-700 border-green-200';
+            case 'Hủy': return 'bg-red-100 text-red-700 border-red-200';
+            default: return 'bg-gray-100 text-gray-700';
+        }
     };
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    <FiFileText className="text-primary-600"/> Quản lý Đơn hàng
-                </h2>
-                {/* Nút thêm mới đơn hàng thủ công nếu cần */}
-            </div>
-
-            {/* Bảng danh sách */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                {isLoading ? <div className="p-10 text-center"><FiLoader className="animate-spin inline w-8 h-8 text-primary-600"/></div> : (
-                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                        <thead className="bg-slate-50 dark:bg-slate-700/50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Mã đơn</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Khách hàng</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Tổng tiền</th>
-                                <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase">Trạng thái</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Hành động</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {orders.map((order: any) => (
-                                <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                    <td className="px-6 py-4 font-medium dark:text-white">{order.orderNumber}</td>
-                                    <td className="px-6 py-4 dark:text-slate-300">{order.customerName}</td>
-                                    <td className="px-6 py-4 text-right font-bold text-primary-600">
-                                        {order.totalAmount?.toLocaleString()}
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium 
-                                            ${order.status === 'Hoàn thành' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        {/* Chỉ hiện nút chuyển đổi nếu đơn chưa hoàn thành */}
-                                        {order.status !== 'Hoàn thành' && (
-                                            <button 
-                                                onClick={() => handleOpenConvertModal(order)}
-                                                className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors shadow-sm"
-                                                title="Chuyển thành Hóa đơn & Trừ kho"
-                                            >
-                                                <FiArrowRight /> Xuất HĐ
-                                            </button>
-                                        )}
-                                        {order.status === 'Hoàn thành' && (
-                                            <span className="text-green-600 flex items-center justify-end gap-1 text-sm"><FiCheckCircle/> Đã xong</span>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-                {!isLoading && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={0} itemsPerPage={10} />}
-            </div>
-
-            {/* MODAL: Xác nhận chuyển đổi & Thanh toán */}
-            {convertingOrder && (
-                <div className="fixed inset-0 bg-slate-900/50 z-50 flex justify-center items-center p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold dark:text-white">Xuất hóa đơn từ {convertingOrder.orderNumber}</h3>
-                            <button onClick={() => setConvertingOrder(null)}><FiX className="w-6 h-6 text-slate-400"/></button>
-                        </div>
-                        
-                        <div className="space-y-4">
-                            <p className="text-slate-600 dark:text-slate-300 text-sm">
-                                Hành động này sẽ <b>trừ tồn kho</b> các sản phẩm trong đơn hàng và tạo một hóa đơn mới.
-                            </p>
-                            
-                            <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                                <div className="flex justify-between text-sm mb-2 dark:text-slate-300">
-                                    <span>Tổng tiền đơn hàng:</span>
-                                    <span className="font-bold">{convertingOrder.totalAmount?.toLocaleString()}</span>
-                                </div>
-                                
-                                <label className="block text-sm font-medium mb-1 dark:text-white">Khách trả ngay (VNĐ):</label>
-                                <input 
-                                    type="number" 
-                                    className="w-full px-3 py-2 border rounded-lg font-bold text-green-600 focus:ring-2 focus:ring-green-500 dark:bg-slate-800"
-                                    value={paymentAmount}
-                                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                                    placeholder="Nhập số tiền khách trả..."
-                                />
-                                <p className="text-xs text-slate-500 mt-1">
-                                    {paymentAmount >= convertingOrder.totalAmount 
-                                        ? 'Trạng thái: Đã thanh toán' 
-                                        : (paymentAmount > 0 ? 'Trạng thái: Thanh toán 1 phần (Còn nợ)' : 'Trạng thái: Ghi nợ toàn bộ')}
-                                </p>
-                            </div>
-
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button 
-                                    onClick={() => setConvertingOrder(null)}
-                                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg dark:text-slate-300 dark:hover:bg-slate-700"
-                                >
-                                    Hủy bỏ
-                                </button>
-                                <button 
-                                    onClick={handleConfirmConvert}
-                                    disabled={orderToInvoice.isPending}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-                                >
-                                    {orderToInvoice.isPending ? <FiLoader className="animate-spin"/> : <FiCheckCircle />} 
-                                    Xác nhận Xuất kho
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+            {/* 1. HEADER */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <FiFileText className="text-primary-600"/> Quản lý Đơn đặt hàng
+                    </h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Theo dõi đơn hàng bán buôn & đặt trước</p>
                 </div>
-            )}
+                
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setCurrentPage('OrderCreate')} 
+                        className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-all active:scale-95"
+                    >
+                        <FiPlus size={20} />
+                        <span>Tạo Đơn Mới</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* 2. BỘ LỌC (Giao diện mẫu) */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex gap-4">
+                <div className="relative flex-1 max-w-sm">
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input type="text" placeholder="Tìm mã đơn, tên khách..." className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <button className="px-4 py-2 border rounded-lg flex items-center gap-2 hover:bg-slate-50">
+                    <FiFilter /> Lọc trạng thái
+                </button>
+            </div>
+
+            {/* 3. DANH SÁCH ĐƠN HÀNG */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã đơn</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Ngày tạo</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Khách hàng</th>
+                            <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase">Tổng tiền</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                        {isLoading ? (
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-500">Đang tải dữ liệu...</td></tr>
+                        ) : orders.length === 0 ? (
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-500 italic">Chưa có đơn hàng nào.</td></tr>
+                        ) : orders.map((order: any) => (
+                            <tr key={order._id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-6 py-4 font-bold text-primary-600">{order.orderNumber}</td>
+                                <td className="px-6 py-4 text-sm">{new Date(order.issueDate).toLocaleDateString('vi-VN')}</td>
+                                <td className="px-6 py-4 font-medium">{order.customerName || 'Khách lẻ'}</td>
+                                <td className="px-6 py-4 text-right font-bold">{order.totalAmount.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-center">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(order.status)}`}>
+                                        {order.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    <button className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Xem chi tiết">
+                                        <FiEye size={18} />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <div className="p-4 border-t">
+                    <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={100} itemsPerPage={10} />
+                </div>
+            </div>
         </div>
     );
 };

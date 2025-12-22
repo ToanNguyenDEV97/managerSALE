@@ -69,3 +69,19 @@ export const useDeleteQuote = () => {
         },
     });
 };
+
+export const useConvertToOrder = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (quoteId: string) => api(`/api/quotes/${quoteId}/convert-to-order`, { method: 'POST' }),
+        onSuccess: () => {
+            // Cập nhật lại danh sách Báo giá (để thấy trạng thái mới)
+            queryClient.invalidateQueries({ queryKey: ['quotes'] });
+            // Cập nhật lại danh sách Đơn hàng (để thấy đơn mới)
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+            
+            toast.success('Đã chuyển thành Đơn hàng thành công! 🚀');
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+};

@@ -32,6 +32,7 @@ import CustomersPage from './pages/CustomersPage';
 import SuppliersPage from './pages/SuppliersPage';
 import InvoicesPage from './pages/InvoicesPage';
 import OrdersPage from './pages/OrdersPage';
+import CreateOrderPage from './pages/CreateOrderPage';
 import QuotesPage from './pages/QuotesPage';
 import PurchasesPage from './pages/PurchasesPage';
 import DeliveriesPage from './pages/DeliveriesPage';
@@ -66,6 +67,7 @@ const pageTitles: Record<PageKey, string> = {
     'Suppliers': 'Nhà cung cấp',
     'Invoices': 'Hóa đơn bán hàng',
     'Orders': 'Đơn đặt hàng',
+    'OrderCreate': 'Tạo đơn hàng mới',
     'Quotes': 'Báo giá',
     'Purchases': 'Nhập kho',
     'Deliveries': 'Giao hàng',
@@ -114,6 +116,7 @@ const MainApp: React.FC = () => {
             case 'Suppliers': return <SuppliersPage />;
             case 'Invoices': return <InvoicesPage />;
             case 'Orders': return <OrdersPage />;
+            case 'OrderCreate': return <CreateOrderPage />;
             case 'Quotes': return <QuotesPage />;
             case 'Purchases': return <PurchasesPage />;
             case 'Deliveries': return <DeliveriesPage />;

@@ -1,39 +1,35 @@
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
 
-const orderItemSchema = new Schema({
-    productId: { type: String, required: true },
-    name: { type: String, required: true },
-    quantity: { type: Number, required: true },
-    price: { type: Number, required: true },
-    vat: { type: Number, required: true },
-}, { _id: false });
-
-const orderSchema = new Schema({
-    organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
-    orderNumber: { type: String, required: true }, // Bỏ unique ở đây
-    customerId: { type: String, required: true },
-    customerName: { type: String, required: true },
-    issueDate: { type: String, required: true },
-    items: [orderItemSchema],
+const OrderSchema = new mongoose.Schema({
+    organizationId: { type: String, required: true },
+    orderNumber: { type: String, required: true }, // Mã đơn: DH-00001
+    
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
+    customerName: { type: String },
+    
+    items: [{
+        productId: { type: String },
+        name: { type: String },
+        quantity: { type: Number },
+        price: { type: Number },
+        unit: { type: String },
+        costPrice: { type: Number } // Lưu giá vốn để tính lãi sau này
+    }],
+    
     totalAmount: { type: Number, required: true },
-    status: { type: String, required: true, enum: ['Chờ xử lý', 'Hoàn thành'], default: 'Chờ xử lý' },
-    quoteId: { type: String },
-}, {
-    timestamps: true
-});
+    depositAmount: { type: Number, default: 0 }, // Tiền cọc (nếu có)
+    
+    issueDate: { type: Date, default: Date.now },
+    deliveryDate: { type: Date }, // Ngày hẹn giao
+    
+    // TRẠNG THÁI QUAN TRỌNG CỦA QUY TRÌNH
+    status: { 
+        type: String, 
+        enum: ['Mới', 'Đang xử lý', 'Đang giao', 'Hoàn thành', 'Hủy'], 
+        default: 'Mới' 
+    },
+    
+    note: { type: String }
+}, { timestamps: true });
 
-// Thêm Compound Index: orderNumber phải là duy nhất TRONG CÙNG MỘT TỔ CHỨC
-orderSchema.index({ organizationId: 1, orderNumber: 1 }, { unique: true });
-
-orderSchema.virtual('id').get(function(){
-    return this._id.toHexString();
-});
-
-orderSchema.set('toJSON', {
-    virtuals: true,
-    transform: function (doc, ret) { delete ret._id; delete ret.__v; }
-});
-
-const Order = mongoose.model('Order', orderSchema);
-module.exports = Order;
+module.exports = mongoose.model('Order', OrderSchema);

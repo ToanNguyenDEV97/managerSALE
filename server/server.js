@@ -276,7 +276,7 @@ apiRouter.post('/purchases', async (req, res) => {
             await new CashFlowTransaction({
                 transactionNumber, type: 'chi', date: validDate, amount: paidAmount,
                 payerReceiverName: supplier.name, description: `Thanh toán nhập hàng ${purchaseNumber}`,
-                category: 'Tiền hàng', organizationId
+                category: 'Trả NCC', organizationId
             }).save({ session });
         }
 
@@ -436,6 +436,76 @@ apiRouter.post('/invoices/:id/return', async (req, res) => {
 // ---------------------------------------------------------
 // 4. ORDERS (ĐƠN HÀNG)
 // ---------------------------------------------------------
+// API tạo Đơn hàng mới (Sinh mã tự động DH-xxxxx)
+apiRouter.post('/orders', async (req, res) => {
+    try {
+        const orderNumber = await getNextSequence(Order, 'DH', req.organizationId);
+        
+        // Mặc định trạng thái là 'Mới' nếu không gửi lên
+        const newOrder = new Order({ 
+            ...req.body, 
+            orderNumber, 
+            status: 'Mới',
+            organizationId: req.organizationId 
+        });
+        
+        await newOrder.save();
+        res.status(201).json(newOrder);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// API: Chuyển đổi Báo giá -> Đơn hàng
+apiRouter.post('/quotes/:id/convert-to-order', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // 1. Tìm báo giá gốc
+        const quote = await Quote.findOne({ _id: id, organizationId: req.organizationId });
+        if (!quote) return res.status(404).json({ message: 'Không tìm thấy báo giá' });
+        
+        // 2. Kiểm tra trạng thái
+        if (quote.status === 'Đã chuyển đổi') {
+            return res.status(400).json({ message: 'Báo giá này đã được chuyển đổi thành đơn hàng rồi!' });
+        }
+
+        // 3. Sinh mã Đơn hàng mới (DH-xxxxx)
+        const orderNumber = await getNextSequence(Order, 'DH', req.organizationId);
+
+        // 4. Tạo Đơn hàng từ dữ liệu Báo giá
+        const newOrder = new Order({
+            organizationId: req.organizationId,
+            orderNumber,
+            customerId: quote.customerId,
+            customerName: quote.customerName,
+            // Copy danh sách sản phẩm
+            items: quote.items.map(item => ({
+                productId: item.productId,
+                name: item.name,
+                quantity: item.quantity,
+                price: item.price,
+                unit: 'Cái', // Hoặc lấy từ item.unit nếu model Báo giá của bạn có lưu
+                costPrice: 0 // Tạm thời để 0 hoặc lấy giá vốn từ bảng Product nếu cần
+            })),
+            totalAmount: quote.totalAmount,
+            status: 'Mới', // Trạng thái đơn hàng khởi tạo
+            note: `Được chuyển đổi từ Báo giá số: ${quote.quoteNumber}`,
+            issueDate: new Date()
+        });
+
+        const savedOrder = await newOrder.save({ session }); 
+
+        // 5. Cập nhật lại trạng thái Báo giá để khóa lại
+        quote.status = 'Đã chuyển đổi';
+        await quote.save({ session });
+
+        res.status(200).json({ message: 'Chuyển đổi thành công', orderId: savedOrder._id });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Chuyển Đơn hàng thành Hóa đơn (Kèm xuất kho & tạo phiếu thu nếu có)
 apiRouter.post('/orders/:id/to-invoice', async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
