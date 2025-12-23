@@ -10,7 +10,7 @@ const cashFlowTransactionSchema = new Schema({
     description: { type: String, required: true },
     payerReceiverName: { type: String },
     payerReceiverAddress: { type: String },
-    category: { type: String, enum: ['Chi phí hoạt động', 'Trả NCC', 'Lương', 'Thu nợ KH', 'Khác', 'Chênh lệch kho'] },
+    category: { type: String, enum: ['Chi phí hoạt động', 'Trả NCC', 'Lương', 'Thu nợ khách hàng', 'Khác', 'Chênh lệch kho'] },
     inputVat: { type: Number, default: 0 },
 }, {
     timestamps: true

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { FiSearch, FiSave, FiShoppingCart, FiUser, FiLoader, FiPlus, FiCalendar } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
+// 1. XÓA dòng import useNavigate này đi
+// import { useNavigate } from 'react-router-dom'; 
+
 import type { InvoiceItem } from '../types';
 import toast from 'react-hot-toast';
 
@@ -9,15 +11,17 @@ import { useProducts } from '../hooks/useProducts';
 import { useAllCustomers, useSaveCustomer } from '../hooks/useCustomers';
 import { useCreateOrder } from '../hooks/useOrders';
 import QuickCustomerModal from '../components/QuickCustomerModal';
+
+// 2. THÊM import useAppContext để lấy hàm chuyển trang
 import { useAppContext } from '../context/DataContext';
 
 const CreateOrderPage: React.FC = () => {
-    const { setCurrentPage } = useAppContext();
-    const navigate = useNavigate();
+  // 3. THAY THẾ navigate bằng setCurrentPage
+  const { setCurrentPage } = useAppContext();
   
-  // 1. Data Fetching
+  // Data Fetching
   const [productSearch, setProductSearch] = useState('');
-  const { data: productsData, isLoading: isLoadingProducts } = useProducts(1, 10, productSearch); // Search limit 10
+  const { data: productsData, isLoading: isLoadingProducts } = useProducts(1, 10, productSearch);
   const products = productsData?.data || [];
 
   const { data: customersData } = useAllCustomers();
@@ -26,12 +30,10 @@ const CreateOrderPage: React.FC = () => {
   const createOrderMutation = useCreateOrder();
   const saveCustomerMutation = useSaveCustomer();
 
-  // 2. Local State
+  // Local State
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [cart, setCart] = useState<InvoiceItem[]>([]);
   const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false);
-  
-  // Thông tin thêm cho đơn hàng
   const [deliveryDate, setDeliveryDate] = useState<string>('');
   const [note, setNote] = useState('');
 
@@ -39,7 +41,6 @@ const CreateOrderPage: React.FC = () => {
 
   // --- Handlers ---
   const handleAddToCart = (product: any) => {
-      // Đơn đặt hàng có thể đặt quá tồn kho (để nhập sau), nên không cần chặn stock <= 0
       setCart(prev => {
           const pId = product.id || product._id;
           const existing = prev.find(item => item.productId === pId);
@@ -91,17 +92,19 @@ const CreateOrderPage: React.FC = () => {
           customerName: customerName,
           items: cart,
           totalAmount: totalAmount,
-          deliveryDate: deliveryDate || null, // Ngày hẹn giao
+          deliveryDate: deliveryDate || null,
           note: note,
-          status: 'Mới' // Trạng thái ban đầu
+          status: 'Mới'
       };
 
       try {
           await createOrderMutation.mutateAsync(orderData);
-          // Sau khi lưu xong, quay về trang danh sách Orders
+          
+          // 4. SỬA LẠI logic điều hướng sau khi lưu thành công
           setTimeout(() => {
-              setCurrentPage('Orders'); // <--- SỬA: Quay về trang Orders
+              setCurrentPage('Orders'); // Quay về trang danh sách Đơn hàng
           }, 1000);
+          
       } catch (error) {
           console.error(error);
       }
@@ -143,7 +146,6 @@ const CreateOrderPage: React.FC = () => {
                             </div>
                             <div className="flex justify-between items-end mt-2">
                                 <span className="font-bold text-primary-600">{product.price.toLocaleString()}</span>
-                                {/* Hiển thị tồn kho để tham khảo, nhưng vẫn cho đặt nếu hết */}
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${product.stock > 0 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                                     Kho: {product.stock}
                                 </span>
@@ -229,7 +231,6 @@ const CreateOrderPage: React.FC = () => {
                                 <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
                                 <button onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)} className="px-2 bg-white border rounded">+</button>
                                 <button onClick={() => handleRemoveFromCart(item.productId)} className="text-red-500 ml-1"><FiSave className="rotate-45" /></button> 
-                                {/* Icon trên thực ra là nút xóa, mình dùng icon có sẵn để demo */}
                             </div>
                         </div>
                     ))
