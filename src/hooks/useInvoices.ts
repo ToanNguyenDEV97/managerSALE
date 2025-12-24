@@ -21,16 +21,15 @@ export const useInvoices = (page = 1, status = 'all', search = '', startDate = '
   });
 };
 
-// 2. Hook Lấy TẤT CẢ hóa đơn (Dùng cho dropdown chọn đơn để giao hàng)
-// Lấy giới hạn 1000 đơn mới nhất để tránh nặng máy
+// 2. Hook Lấy TẤT CẢ hóa đơn (Dùng cho dropdown chọn đơn để giao hàng - Cái bạn đang thiếu)
 export const useAllInvoices = () => {
   return useQuery({
     queryKey: ['invoices', 'all'],
-    queryFn: () => api('/api/invoices?limit=1000'), 
+    queryFn: () => api('/api/invoices?limit=1000'), // Lấy 1000 đơn gần nhất
   });
 };
 
-// 3. Hook Lưu/Tạo/Sửa hóa đơn (Quan trọng cho bán hàng)
+// 3. Hook Lưu/Tạo Hóa đơn (Dùng cho trang Bán hàng POS)
 export const useSaveInvoice = () => {
     const queryClient = useQueryClient();
     return useMutation({
@@ -44,11 +43,11 @@ export const useSaveInvoice = () => {
             }
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['invoices'] }); // Làm mới danh sách
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
             queryClient.invalidateQueries({ queryKey: ['products'] }); // Cập nhật kho
             queryClient.invalidateQueries({ queryKey: ['customers'] }); // Cập nhật nợ
-            queryClient.invalidateQueries({ queryKey: ['cashflow'] }); // Cập nhật quỹ
-            toast.success('Lưu hóa đơn thành công! ✅');
+            queryClient.invalidateQueries({ queryKey: ['cashflow'] });
+            toast.success('Lưu đơn hàng thành công! ✅');
         },
         onError: (err: any) => toast.error(err.message),
     });
@@ -70,15 +69,19 @@ export const useDeleteInvoice = () => {
   });
 };
 
-// 5. Hook Trả hàng (Return)
+// 5. Hook Trả hàng (Return) - Có hỗ trợ gửi lý do
 export const useReturnInvoice = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api(`/api/invoices/${id}/return`, { method: 'POST' }),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => 
+        api(`/api/invoices/${id}/return`, { 
+            method: 'POST',
+            body: JSON.stringify({ reason }) 
+        }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] }); 
+      queryClient.invalidateQueries({ queryKey: ['customers'] }); 
       queryClient.invalidateQueries({ queryKey: ['cashflow'] });
       toast.success('Đã xử lý trả hàng thành công! ↩️');
     },
@@ -86,19 +89,19 @@ export const useReturnInvoice = () => {
   });
 };
 
-// 6. Hook Thanh toán hóa đơn (MỚI)
+// 6. Hook Thanh toán nợ (Dùng cho Modal thanh toán)
 export const usePayInvoice = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: ({ id, amount }: { id: string; amount: number }) => 
-           api(`/api/invoices/${id}/payment`, { 
+            api(`/api/invoices/${id}/payment`, { 
                 method: 'POST', 
                 body: JSON.stringify({ amount }) 
             }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['invoices'] }); // Cập nhật lại list hóa đơn
-            queryClient.invalidateQueries({ queryKey: ['customers'] }); // Cập nhật lại nợ khách
-            queryClient.invalidateQueries({ queryKey: ['cashflow'] }); // Cập nhật lại quỹ tiền
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['cashflow'] });
             toast.success('Đã thu nợ thành công! 💰');
         },
         onError: (err: any) => toast.error(err.message),

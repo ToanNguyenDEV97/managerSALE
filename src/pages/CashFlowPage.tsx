@@ -1,110 +1,116 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../utils/api';
-import { FiPlus, FiArrowUp, FiArrowDown, FiFilter, FiLoader } from 'react-icons/fi';
-import CashFlowModal from '../components/CashFlowModal';
+import { FiArrowUp, FiArrowDown, FiLoader, FiFilter, FiDollarSign } from 'react-icons/fi';
 
 const CashFlowPage: React.FC = () => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    
-    // Gọi API lấy danh sách giao dịch (đã có sẵn trong server.js: /api/cashflow-transactions)
-    const { data: cashFlowData, isLoading } = useQuery({
+    // 1. Lấy dữ liệu Sổ quỹ
+    const { data: responseData, isLoading } = useQuery({
         queryKey: ['cashflow'],
-        queryFn: () => api('/api/cashflow-transactions')
-    } as any);
+        queryFn: () => api('/api/cashflow-transactions'),
+    });
 
-    const transactions = cashFlowData?.data || [];
+    const transactions = Array.isArray(responseData) ? responseData : (responseData?.data || []);
 
-    // Tính toán tổng quỹ
-    const totalIncome = transactions.filter((t: any) => t.type === 'thu').reduce((sum: number, t: any) => sum + t.amount, 0);
-    const totalExpense = transactions.filter((t: any) => t.type === 'chi').reduce((sum: number, t: any) => sum + t.amount, 0);
-    const currentBalance = totalIncome - totalExpense;
+    // 2. Tính toán tổng thu/chi
+    const stats = useMemo(() => {
+        return transactions.reduce((acc: any, curr: any) => {
+            if (curr.type === 'thu') acc.income += curr.amount;
+            else acc.expense += curr.amount;
+            return acc;
+        }, { income: 0, expense: 0 });
+    }, [transactions]);
 
-    if (isLoading) return <div className="flex justify-center p-10"><FiLoader className="animate-spin text-2xl" /></div>;
+    if (isLoading) return <div className="h-screen flex justify-center items-center"><FiLoader className="animate-spin text-2xl text-slate-400"/></div>;
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* 1. Header & Stats */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Sổ Quỹ Tiền Mặt</h2>
-                <button 
-                    onClick={() => setIsModalOpen(true)}
-                    className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-lg"
-                >
-                    <FiPlus /> Lập Phiếu Thu/Chi
-                </button>
-            </div>
-
-            {/* 2. Cards Tổng Quan */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div className="text-slate-500 text-sm font-medium uppercase mb-1">Tổng Thu</div>
-                    <div className="text-2xl font-bold text-green-600 flex items-center gap-2">
-                        <FiArrowUp /> {totalIncome.toLocaleString()} đ
+        <div className="space-y-6 animate-fade-in pb-10">
+            
+            {/* THỐNG KÊ NHANH */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-slate-500 text-xs uppercase font-bold">Tổng Thu</p>
+                        <p className="text-2xl font-bold text-green-600 mt-1">+{stats.income.toLocaleString()} đ</p>
                     </div>
+                    <div className="p-3 bg-green-100 text-green-600 rounded-full"><FiArrowDown size={24}/></div>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div className="text-slate-500 text-sm font-medium uppercase mb-1">Tổng Chi</div>
-                    <div className="text-2xl font-bold text-red-600 flex items-center gap-2">
-                        <FiArrowDown /> {totalExpense.toLocaleString()} đ
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-slate-500 text-xs uppercase font-bold">Tổng Chi</p>
+                        <p className="text-2xl font-bold text-red-600 mt-1">-{stats.expense.toLocaleString()} đ</p>
                     </div>
+                    <div className="p-3 bg-red-100 text-red-600 rounded-full"><FiArrowUp size={24}/></div>
                 </div>
-                <div className="bg-primary-600 text-white p-6 rounded-xl shadow-lg shadow-primary-500/30">
-                    <div className="text-primary-100 text-sm font-medium uppercase mb-1">Tồn Quỹ Hiện Tại</div>
-                    <div className="text-3xl font-bold">
-                        {currentBalance.toLocaleString()} đ
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-slate-500 text-xs uppercase font-bold">Tồn Quỹ Hiện Tại</p>
+                        <p className="text-2xl font-bold text-primary-600 mt-1">{(stats.income - stats.expense).toLocaleString()} đ</p>
                     </div>
+                    <div className="p-3 bg-primary-100 text-primary-600 rounded-full"><FiDollarSign size={24}/></div>
                 </div>
             </div>
 
-            {/* 3. Bảng Giao Dịch */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700/50">
-                    <h3 className="font-bold text-slate-700 dark:text-white">Lịch sử giao dịch</h3>
-                    <button className="text-slate-500 hover:text-primary-600"><FiFilter /></button>
+            {/* BẢNG DỮ LIỆU */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                    <h2 className="font-bold text-slate-800 dark:text-white">Lịch sử Giao dịch</h2>
+                    <div className="flex gap-2">
+                         {/* Có thể thêm bộ lọc ngày ở đây sau này */}
+                    </div>
                 </div>
+
                 <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                        <thead className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                        <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
-                                <th className="p-4">Mã phiếu</th>
-                                <th className="p-4">Ngày</th>
-                                <th className="p-4">Loại</th>
-                                <th className="p-4">Đối tượng</th>
-                                <th className="p-4">Diễn giải</th>
-                                <th className="p-4 text-right">Số tiền</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã phiếu</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Ngày</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Loại</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Đối tượng</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Danh mục</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Diễn giải</th>
+                                <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase">Số tiền</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            {transactions.length > 0 ? (
-                                transactions.map((t: any) => (
-                                    <tr key={t._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                        <td className="p-4 font-medium text-slate-800 dark:text-white">{t.transactionNumber}</td>
-                                        <td className="p-4 text-slate-500">{new Date(t.date).toLocaleDateString('vi-VN')}</td>
-                                        <td className="p-4">
-                                            {t.type === 'thu' ? (
-                                                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase">Thu</span>
-                                            ) : (
-                                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold uppercase">Chi</span>
-                                            )}
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {transactions.length === 0 ? (
+                                <tr><td colSpan={7} className="text-center py-10 text-slate-500">Chưa có giao dịch nào.</td></tr>
+                            ) : (
+                                transactions.map((item: any) => (
+                                    // 👇 FIX LỖI Ở ĐÂY: Thêm prop key={item._id}
+                                    <tr key={item.id || item._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-300">
+                                            {item.transactionNumber}
                                         </td>
-                                        <td className="p-4 font-medium">{t.payerReceiverName || '-'}</td>
-                                        <td className="p-4 text-slate-600 max-w-xs truncate" title={t.description}>{t.description}</td>
-                                        <td className={`p-4 text-right font-bold ${t.type === 'thu' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {t.type === 'thu' ? '+' : '-'}{t.amount.toLocaleString()}
+                                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                                            {new Date(item.date).toLocaleDateString('vi-VN')}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {item.type === 'thu' 
+                                                ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Thu tiền</span>
+                                                : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Chi tiền</span>
+                                            }
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300 font-medium">
+                                            {item.payerReceiverName || '---'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-500">
+                                            {item.category}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.description}>
+                                            {item.description}
+                                        </td>
+                                        <td className={`px-6 py-4 text-right font-bold ${item.type === 'thu' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {item.type === 'thu' ? '+' : '-'}{item.amount.toLocaleString()}
                                         </td>
                                     </tr>
                                 ))
-                            ) : (
-                                <tr><td colSpan={6} className="p-8 text-center text-slate-500 italic">Chưa có giao dịch nào.</td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
-
-            {/* Modal */}
-            <CashFlowModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         </div>
     );
 };

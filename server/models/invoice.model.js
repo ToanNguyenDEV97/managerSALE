@@ -19,7 +19,7 @@ const invoiceSchema = new Schema({
     items: [invoiceItemSchema],
     totalAmount: { type: Number, required: true },
     paidAmount: { type: Number, required: true, default: 0 },
-    status: { type: String, required: true, enum: ['Chưa thanh toán', 'Đã thanh toán', 'Quá hạn', 'Thanh toán một phần'], default: 'Chưa thanh toán' },
+    status: { type: String, required: true, enum: ['Chưa thanh toán', 'Đã thanh toán', 'Quá hạn', 'Thanh toán một phần', 'Đã hoàn trả'], default: 'Chưa thanh toán' },
     orderId: { type: String },
     deliveryId: { type: String },
 }, {

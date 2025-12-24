@@ -329,7 +329,7 @@ apiRouter.post('/purchases/:id/return', async (req, res) => {
 // ---------------------------------------------------------
 // 3. SALES (BÁN HÀNG)
 // ---------------------------------------------------------
-apiRouter.post('/sales', async (req, res) => {
+apiRouter.post('/invoices', async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -397,6 +397,7 @@ apiRouter.post('/invoices/:id/return', async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
+        const { reason } = req.body; // <--- LẤY LÝ DO TỪ CLIENT
         const invoice = await Invoice.findOne({ _id: req.params.id, organizationId }).session(session);
         if (!invoice) throw new Error('Không tìm thấy hóa đơn');
 
@@ -404,27 +405,32 @@ apiRouter.post('/invoices/:id/return', async (req, res) => {
         for (const item of invoice.items) {
              await changeStock({
                  session, organizationId, productId: item.productId, quantityChange: item.quantity,
-                 type: 'Nhập hàng trả', referenceNumber: invoice.invoiceNumber, note: 'Khách trả lại hàng'
+                 type: 'Nhập hàng trả', referenceNumber: invoice.invoiceNumber, 
+                 note: reason || 'Khách trả lại hàng' // <--- GHI LÝ DO VÀO THẺ KHO
              });
         }
 
-        // Trừ nợ khách (nếu khách mua nợ)
+        // Trừ nợ khách
         if (invoice.customerId && invoice.status === 'Còn nợ') {
              const debtToReduce = invoice.totalAmount - invoice.paidAmount;
              await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { debt: -debtToReduce } }).session(session);
         }
 
-        // Nếu khách đã trả tiền -> Tạo phiếu Chi trả lại tiền khách (Refund)
+        // Hoàn tiền (Nếu có)
         if (invoice.paidAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, 'PC', organizationId);
             await new CashFlowTransaction({
                 transactionNumber, type: 'chi', date: new Date(), amount: invoice.paidAmount,
-                payerReceiverName: invoice.customerName, description: `Hoàn tiền trả hàng ${invoice.invoiceNumber}`,
-                category: 'Hoàn tiền', organizationId
+                payerReceiverName: invoice.customerName, 
+                description: `Hoàn tiền trả hàng ${invoice.invoiceNumber} (${reason || 'Lý do khác'})`, // <--- GHI LÝ DO VÀO PHIẾU CHI
+                category: 'Khác', organizationId
             }).save({ session });
         }
 
         invoice.status = 'Đã hoàn trả';
+        // Có thể lưu thêm reason vào invoice nếu Model Invoice của bạn có trường note/cancelReason
+        if (reason) invoice.note = (invoice.note ? invoice.note + '. ' : '') + `Lý do trả: ${reason}`;
+        
         await invoice.save({ session });
 
         await session.commitTransaction();
@@ -498,6 +504,43 @@ apiRouter.get('/invoices/:id', async (req, res) => {
         if (!invoice) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
         res.json(invoice);
     } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// 3. Tạo hóa đơn mới (Thường dùng cho form sửa/tạo thủ công)
+apiRouter.post('/invoices', async (req, res) => {
+    try {
+        const { organizationId } = req;
+        // Nếu không gửi mã HĐ thì tự sinh
+        let invoiceNumber = req.body.invoiceNumber;
+        if (!invoiceNumber) {
+            invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
+        }
+
+        const newInvoice = new Invoice({ 
+            ...req.body, 
+            invoiceNumber,
+            organizationId 
+        });
+        await newInvoice.save();
+        res.status(201).json(newInvoice);
+    } catch (e) { 
+        res.status(500).json({ message: e.message }); 
+    }
+});
+
+// 4. Cập nhật hóa đơn (Sửa thông tin)
+apiRouter.put('/invoices/:id', async (req, res) => {
+    try {
+        const updatedInvoice = await Invoice.findOneAndUpdate(
+            { _id: req.params.id, organizationId: req.organizationId }, 
+            req.body, 
+            { new: true }
+        );
+        if (!updatedInvoice) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
+        res.json(updatedInvoice);
+    } catch (e) { 
+        res.status(500).json({ message: e.message }); 
+    }
 });
 
 // [MỚI] API THANH TOÁN CÔNG NỢ HÓA ĐƠN

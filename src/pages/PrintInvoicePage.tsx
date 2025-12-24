@@ -19,9 +19,6 @@ const PrintInvoicePage: React.FC = () => {
     useEffect(() => {
         if (invoice) {
             document.title = `Hoa_don_${invoice.invoiceNumber}`; // Đặt tên file khi lưu PDF
-            setTimeout(() => {
-                window.print();
-            }, 500);
         }
     }, [invoice]);
 

@@ -7,6 +7,7 @@ import { useAppContext } from '../context/DataContext';
 import { useInvoices, useDeleteInvoice, useReturnInvoice } from '../hooks/useInvoices';
 import Pagination from '../components/Pagination';
 import ConfirmationModal from '../components/ConfirmationModal';
+import ReturnInvoiceModal from '../components/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
 
 const InvoicesPage: React.FC = () => {
@@ -19,6 +20,8 @@ const InvoicesPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
+    // State cho Modal trả hàng
+    const [invoiceToReturn, setInvoiceToReturn] = useState<{id: string, code: string} | null>(null);
 
     // Logic Lọc Ngày
     const [dateFilterType, setDateFilterType] = useState<'today' | 'week' | 'month' | 'custom' | 'all'>('all'); 
@@ -118,10 +121,16 @@ const InvoicesPage: React.FC = () => {
         setInvoiceToDelete(null);
     };
 
-    const handleReturnInvoice = async (id: string) => {
-        if (window.confirm('Khách trả hàng? Hàng sẽ nhập lại kho và hoàn tiền khách.')) {
-            await returnMutation.mutateAsync(id);
-        }
+    // Khi bấm nút icon Trả hàng ở bảng
+    const openReturnModal = (invoice: any) => {
+        setInvoiceToReturn({ id: invoice.id || invoice._id, code: invoice.invoiceNumber });
+    };
+
+    // Hàm thực sự gọi API (được truyền vào Modal)
+    const handleConfirmReturn = async (reason: string) => {
+        if (!invoiceToReturn) return;
+        await returnMutation.mutateAsync({ id: invoiceToReturn.id, reason });
+        // Không cần setInvoiceToReturn(null) ở đây vì Modal sẽ gọi onClose
     };
 
     const handleExportExcel = () => {
@@ -264,7 +273,7 @@ const InvoicesPage: React.FC = () => {
                                                 <button onClick={() => setPrintingInvoiceId(inv.id || inv._id)} className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors" title="In hóa đơn"><FiPrinter size={18}/></button>
                                                 {inv.status !== 'Đã hoàn trả' && (
                                                     <>
-                                                        <button onClick={() => handleReturnInvoice(inv.id || inv._id)} className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors" title="Khách trả hàng"><FiRotateCcw size={18}/></button>
+                                                        <button onClick={() => openReturnModal(inv)} className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors" title="Khách trả hàng"><FiRotateCcw size={18}/></button>
                                                         <button onClick={() => setInvoiceToDelete(inv.id || inv._id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Hủy hóa đơn"><FiTrash2 size={18}/></button>
                                                     </>
                                                 )}
@@ -282,6 +291,14 @@ const InvoicesPage: React.FC = () => {
                     <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={invoiceData?.total || 0} itemsPerPage={10} />
                 </div>
             </div>
+
+            {/* Modal Trả Hàng */}
+            <ReturnInvoiceModal 
+                isOpen={!!invoiceToReturn}
+                onClose={() => setInvoiceToReturn(null)}
+                onConfirm={handleConfirmReturn}
+                invoiceNumber={invoiceToReturn?.code}
+            />
 
             {/* Modal Xóa */}
             {invoiceToDelete && (
