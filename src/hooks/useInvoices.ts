@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
 
-// 1. Hook Lấy danh sách (Có tìm kiếm + Lọc ngày + Phân trang)
+// 1. Hook Lấy danh sách (Có tìm kiếm + Lọc ngày)
 export const useInvoices = (page = 1, status = 'all', search = '', startDate = '', endDate = '') => {
   return useQuery({
     queryKey: ['invoices', page, status, search, startDate, endDate],
@@ -21,20 +21,19 @@ export const useInvoices = (page = 1, status = 'all', search = '', startDate = '
   });
 };
 
-// 2. Hook Lấy TẤT CẢ hóa đơn (Dùng cho dropdown chọn đơn để giao hàng - Cái bạn đang thiếu)
+// 2. Hook Lấy TẤT CẢ hóa đơn (Cho dropdown chọn đơn)
 export const useAllInvoices = () => {
   return useQuery({
     queryKey: ['invoices', 'all'],
-    queryFn: () => api('/api/invoices?limit=1000'), // Lấy 1000 đơn gần nhất
+    queryFn: () => api('/api/invoices?limit=1000'), 
   });
 };
 
-// 3. Hook Lưu/Tạo Hóa đơn (Dùng cho trang Bán hàng POS)
+// 3. Hook Lưu/Tạo Hóa đơn (Cho POS)
 export const useSaveInvoice = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (data: any) => {
-            // Nếu có ID thì là Sửa (PUT), không có thì là Mới (POST)
             if (data.id || data._id) {
                 const id = data.id || data._id;
                 return api(`/api/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
@@ -44,9 +43,9 @@ export const useSaveInvoice = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['invoices'] });
-            queryClient.invalidateQueries({ queryKey: ['products'] }); // Cập nhật kho
-            queryClient.invalidateQueries({ queryKey: ['customers'] }); // Cập nhật nợ
-            queryClient.invalidateQueries({ queryKey: ['cashflow'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] }); 
+            queryClient.invalidateQueries({ queryKey: ['customers'] }); 
+            queryClient.invalidateQueries({ queryKey: ['cashflow'] }); 
             toast.success('Lưu đơn hàng thành công! ✅');
         },
         onError: (err: any) => toast.error(err.message),
@@ -69,7 +68,7 @@ export const useDeleteInvoice = () => {
   });
 };
 
-// 5. Hook Trả hàng (Return) - Có hỗ trợ gửi lý do
+// 5. Hook Trả hàng
 export const useReturnInvoice = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -89,7 +88,7 @@ export const useReturnInvoice = () => {
   });
 };
 
-// 6. Hook Thanh toán nợ (Dùng cho Modal thanh toán)
+// 6. Hook Thanh toán nợ (QUAN TRỌNG: Bạn đang thiếu cái này)
 export const usePayInvoice = () => {
     const queryClient = useQueryClient();
     return useMutation({
@@ -106,4 +105,19 @@ export const usePayInvoice = () => {
         },
         onError: (err: any) => toast.error(err.message),
     });
+};
+
+// 7. Hook Lấy lịch sử thanh toán của hóa đơn
+export const useInvoiceHistory = (invoiceNumber: string | undefined) => {
+  return useQuery({
+    queryKey: ['invoice-history', invoiceNumber],
+    queryFn: async () => {
+        if (!invoiceNumber) return [];
+        const res: any = await api(`/api/invoices/${invoiceNumber}/history`);
+        
+        // SỬA LỖI Ở ĐÂY: Trả về mảng lịch sử thực sự
+        return res.data || res; 
+    },
+    enabled: !!invoiceNumber 
+  });
 };

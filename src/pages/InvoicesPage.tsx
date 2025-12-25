@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
     FiPrinter, FiEye, FiTrash2, FiSearch, FiFilter, 
-    FiDollarSign, FiDownload, FiRotateCcw 
+    FiDollarSign, FiDownload, FiRotateCcw, FiCheckSquare, FiX 
 } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import { useInvoices, useDeleteInvoice, useReturnInvoice } from '../hooks/useInvoices';
@@ -10,31 +10,37 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import ReturnInvoiceModal from '../components/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
 
+import InvoiceDetailsModal from '../components/InvoiceDetailsModal'; 
+import PrintInvoiceModal from '../components/PrintInvoiceModal';
+
 const InvoicesPage: React.FC = () => {
-    const { setViewingInvoiceId, setPrintingInvoiceId, setPayingInvoiceId } = useAppContext();
+    const { setPayingInvoiceId } = useAppContext();
     const deleteMutation = useDeleteInvoice();
     const returnMutation = useReturnInvoice();
 
-    // State quản lý
+    // --- STATE QUẢN LÝ ---
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null); // Modal Xem
+    const [printingInvoiceId, setPrintingInvoiceId] = useState<string | null>(null); // Modal In
+    const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);     // Modal Xóa lẻ
+    const [invoiceToReturn, setInvoiceToReturn] = useState<{id: string, code: string} | null>(null); // Modal Trả
+
+    // 1. [MỚI] STATE CHO BULK ACTIONS (Chọn nhiều)
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false); // Modal xác nhận xóa nhiều
+
+    // State lọc dữ liệu
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
-    // State cho Modal trả hàng
-    const [invoiceToReturn, setInvoiceToReturn] = useState<{id: string, code: string} | null>(null);
-
-    // Logic Lọc Ngày
     const [dateFilterType, setDateFilterType] = useState<'today' | 'week' | 'month' | 'custom' | 'all'>('all'); 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-   // Hàm tính ngày (Đã sửa để dùng giờ địa phương Việt Nam)
+    // --- LOGIC TÍNH NGÀY ---
     const getDateRange = (type: string) => {
         const today = new Date();
         const start = new Date(today);
         const end = new Date(today);
-
-        // Hàm format ra chuỗi YYYY-MM-DD chuẩn
         const formatDate = (date: Date) => {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -42,44 +48,33 @@ const InvoicesPage: React.FC = () => {
             return `${year}-${month}-${day}`;
         };
 
-        if (type === 'today') {
-            // Giữ nguyên start/end
-        } else if (type === 'week') {
-            const day = today.getDay(); // 0 là CN, 1 là Thứ 2
-            // Tính lùi về Thứ 2 gần nhất
+        if (type === 'today') { /* giữ nguyên */ } 
+        else if (type === 'week') {
+            const day = today.getDay(); 
             const diff = today.getDate() - (day === 0 ? 6 : day - 1);
             start.setDate(diff);
-            end.setDate(start.getDate() + 6); // Đến Chủ nhật
+            end.setDate(start.getDate() + 6); 
         } else if (type === 'month') {
-            start.setDate(1); // Mùng 1
-            end.setMonth(end.getMonth() + 1, 0); // Cuối tháng
+            start.setDate(1); 
+            end.setMonth(end.getMonth() + 1, 0); 
         }
-        
-        return {
-            start: formatDate(start),
-            end: formatDate(end)
-        };
+        return { start: formatDate(start), end: formatDate(end) };
     };
 
-    // --- CÁC HÀM XỬ LÝ (Đã thêm setPage(1) để fix lỗi tìm kiếm) ---
-
-    // 1. Xử lý tìm kiếm
+    // --- HANDLERS LỌC ---
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchTerm(e.target.value);
-        setPage(1); // <--- QUAN TRỌNG: Quay về trang 1 khi tìm kiếm
+        setPage(1);
     };
 
-    // 2. Xử lý lọc trạng thái
     const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setStatusFilter(e.target.value);
-        setPage(1); // <--- QUAN TRỌNG
+        setPage(1);
     };
 
-    // 3. Xử lý lọc ngày nhanh
     const handleQuickFilter = (type: 'today' | 'week' | 'month' | 'custom' | 'all') => {
         setDateFilterType(type);
-        setPage(1); // <--- QUAN TRỌNG
-        
+        setPage(1);
         if (type === 'all') {
             setStartDate('');
             setEndDate('');
@@ -90,21 +85,61 @@ const InvoicesPage: React.FC = () => {
         }
     };
 
-    // 4. Xử lý chọn ngày thủ công
     const handleDateChange = (isStart: boolean, value: string) => {
         if (isStart) setStartDate(value);
         else setEndDate(value);
-        
         setDateFilterType('custom');
-        setPage(1); // <--- QUAN TRỌNG
+        setPage(1);
     };
 
-    // Lấy dữ liệu
+    const handlePrintClick = (id: string) => {
+        setPrintingInvoiceId(id);
+    };
+
+    // --- LẤY DỮ LIỆU TỪ API ---
     const { data: invoiceData, isLoading } = useInvoices(page, statusFilter, searchTerm, startDate, endDate);
     const invoices = Array.isArray(invoiceData) ? invoiceData : (invoiceData?.data || []);
     const totalPages = invoiceData?.totalPages || 1;
 
-    // Thống kê nhanh
+    // --- 2. [MỚI] LOGIC CHECKBOX CHỌN NHIỀU ---
+    
+    // Chọn/Bỏ chọn một dòng
+    const toggleSelectOne = (id: string) => {
+        if (selectedIds.includes(id)) {
+            setSelectedIds(prev => prev.filter(item => item !== id));
+        } else {
+            setSelectedIds(prev => [...prev, id]);
+        }
+    };
+
+    // Chọn/Bỏ chọn tất cả (trong trang hiện tại)
+    const toggleSelectAll = () => {
+        if (selectedIds.length === invoices.length) {
+            setSelectedIds([]); // Bỏ chọn hết
+        } else {
+            // Chọn hết các ID trong trang này
+            const allIds = invoices.map((inv: any) => inv.id || inv._id);
+            setSelectedIds(allIds);
+        }
+    };
+
+    // Xử lý Xóa hàng loạt
+    const handleBulkDelete = async () => {
+        if (selectedIds.length === 0) return;
+        
+        // Dùng Promise.all để xóa song song (hoặc bạn có thể viết API xóa bulk ở backend)
+        const toastId = toast.loading('Đang xóa các hóa đơn...');
+        try {
+            await Promise.all(selectedIds.map(id => deleteMutation.mutateAsync(id)));
+            toast.success(`Đã xóa ${selectedIds.length} hóa đơn thành công!`, { id: toastId });
+            setSelectedIds([]);
+            setIsBulkDeleting(false);
+        } catch (error) {
+            toast.error('Có lỗi xảy ra khi xóa hàng loạt', { id: toastId });
+        }
+    };
+
+    // --- CÁC HÀM CŨ ---
     const stats = useMemo(() => {
         return invoices.reduce((acc: any, curr: any) => {
             acc.totalRevenue += curr.totalAmount || 0;
@@ -114,23 +149,19 @@ const InvoicesPage: React.FC = () => {
         }, { totalRevenue: 0, totalDebt: 0 });
     }, [invoices]);
 
-    // Các hàm hành động (Xóa, Trả hàng, Xuất Excel)
     const handleDeleteInvoice = async () => {
         if (!invoiceToDelete) return;
         await deleteMutation.mutateAsync(invoiceToDelete);
         setInvoiceToDelete(null);
     };
 
-    // Khi bấm nút icon Trả hàng ở bảng
     const openReturnModal = (invoice: any) => {
         setInvoiceToReturn({ id: invoice.id || invoice._id, code: invoice.invoiceNumber });
     };
 
-    // Hàm thực sự gọi API (được truyền vào Modal)
     const handleConfirmReturn = async (reason: string) => {
         if (!invoiceToReturn) return;
         await returnMutation.mutateAsync({ id: invoiceToReturn.id, reason });
-        // Không cần setInvoiceToReturn(null) ở đây vì Modal sẽ gọi onClose
     };
 
     const handleExportExcel = () => {
@@ -159,7 +190,7 @@ const InvoicesPage: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6 animate-fade-in pb-10">
+        <div className="space-y-6 animate-fade-in pb-20 relative">
             {/* THỐNG KÊ */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -185,13 +216,13 @@ const InvoicesPage: React.FC = () => {
                         <input 
                             type="text" placeholder="Tìm mã HĐ, tên khách..." 
                             className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-primary-500"
-                            value={searchTerm} onChange={handleSearchChange} // Đã dùng hàm mới
+                            value={searchTerm} onChange={handleSearchChange} 
                         />
                     </div>
                     <div className="relative">
                         <select 
                             className="pl-3 pr-8 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 appearance-none cursor-pointer"
-                            value={statusFilter} onChange={handleStatusChange} // Đã dùng hàm mới
+                            value={statusFilter} onChange={handleStatusChange} 
                         >
                             <option value="all">Tất cả trạng thái</option>
                             <option value="debt">Khách còn nợ</option>
@@ -200,8 +231,6 @@ const InvoicesPage: React.FC = () => {
                         <FiFilter className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
                 </div>
-
-                {/* BỘ LỌC NGÀY */}
                 <div className="flex flex-col md:flex-row items-center gap-3 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
                     <div className="flex bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-600 overflow-hidden p-1 shadow-sm">
                         {[{ id: 'all', label: 'Tất cả' }, { id: 'today', label: 'Hôm nay' }, { id: 'week', label: 'Tuần này' }, { id: 'month', label: 'Tháng này' }, { id: 'custom', label: 'Tùy chọn' }]
@@ -217,7 +246,6 @@ const InvoicesPage: React.FC = () => {
                             </button>
                         ))}
                     </div>
-
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 ml-auto">
                         <span className="text-xs uppercase font-bold text-slate-400">Từ:</span>
                         <input type="date" className="border dark:border-slate-600 rounded px-2 py-1.5 bg-white dark:bg-slate-800 disabled:opacity-50"
@@ -235,6 +263,15 @@ const InvoicesPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                         <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
+                                {/* 3. [MỚI] CHECKBOX SELECT ALL */}
+                                <th className="px-6 py-3 text-center w-10">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                                        checked={invoices.length > 0 && selectedIds.length === invoices.length}
+                                        onChange={toggleSelectAll}
+                                    />
+                                </th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã HĐ</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Ngày</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Khách</th>
@@ -246,13 +283,27 @@ const InvoicesPage: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {isLoading ? (
-                                <tr><td colSpan={7} className="text-center py-10 text-slate-500">Đang tải dữ liệu...</td></tr>
+                                <tr><td colSpan={8} className="text-center py-10 text-slate-500">Đang tải dữ liệu...</td></tr>
                             ) : invoices.length === 0 ? (
-                                <tr><td colSpan={7} className="text-center py-10 text-slate-500">Không tìm thấy hóa đơn nào phù hợp.</td></tr>
+                                <tr><td colSpan={8} className="text-center py-10 text-slate-500">Không tìm thấy hóa đơn nào phù hợp.</td></tr>
                             ) : invoices.map((inv: any) => {
                                  const debt = (inv.totalAmount || 0) - (inv.paidAmount || 0);
+                                 const isSelected = selectedIds.includes(inv.id || inv._id);
+                                 
                                  return (
-                                    <tr key={inv.id || inv._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                                    <tr 
+                                        key={inv.id || inv._id} 
+                                        className={`transition-colors group ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                                    >
+                                        {/* 4. [MỚI] CHECKBOX TỪNG DÒNG */}
+                                        <td className="px-6 py-4 text-center">
+                                            <input 
+                                                type="checkbox" 
+                                                className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                                                checked={isSelected}
+                                                onChange={() => toggleSelectOne(inv.id || inv._id)}
+                                            />
+                                        </td>
                                         <td className="px-6 py-4 font-bold text-primary-600 whitespace-nowrap">{inv.invoiceNumber}</td>
                                         <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
                                             {new Date(inv.issueDate).toLocaleDateString('vi-VN')}
@@ -269,8 +320,23 @@ const InvoicesPage: React.FC = () => {
                                                 {debt > 0 && inv.status !== 'Đã hoàn trả' && (
                                                     <button onClick={() => setPayingInvoiceId(inv.id || inv._id)} className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded transition-colors" title="Thu nợ"><FiDollarSign size={18}/></button>
                                                 )}
-                                                <button onClick={() => setViewingInvoiceId(inv.id || inv._id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Xem chi tiết"><FiEye size={18}/></button>
-                                                <button onClick={() => setPrintingInvoiceId(inv.id || inv._id)} className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors" title="In hóa đơn"><FiPrinter size={18}/></button>
+                                                
+                                                <button 
+                                                    onClick={() => setSelectedInvoiceId(inv._id || inv.id)} 
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                                                    title="Xem chi tiết"
+                                                >
+                                                    <FiEye size={18}/>
+                                                </button>
+
+                                                <button 
+                                                    onClick={() => handlePrintClick(inv.id || inv._id)} 
+                                                    className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors" 
+                                                    title="In hóa đơn"
+                                                >
+                                                    <FiPrinter size={18}/>
+                                                </button>
+
                                                 {inv.status !== 'Đã hoàn trả' && (
                                                     <>
                                                         <button onClick={() => openReturnModal(inv)} className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors" title="Khách trả hàng"><FiRotateCcw size={18}/></button>
@@ -286,13 +352,36 @@ const InvoicesPage: React.FC = () => {
                     </table>
                 </div>
                 
-                {/* Phân trang */}
                 <div className="border-t border-slate-200 dark:border-slate-700 p-4">
                     <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={invoiceData?.total || 0} itemsPerPage={10} />
                 </div>
             </div>
 
-            {/* Modal Trả Hàng */}
+            {/* --- 5. [MỚI] FLOATING BULK ACTIONS BAR (Thanh công cụ hàng loạt) --- */}
+            {selectedIds.length > 0 && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 animate-bounce-in">
+                    <span className="font-bold flex items-center gap-2">
+                        <FiCheckSquare className="text-green-400"/>
+                        Đã chọn {selectedIds.length} hóa đơn
+                    </span>
+                    <div className="h-6 w-px bg-slate-700"></div>
+                    <button 
+                        onClick={() => setIsBulkDeleting(true)}
+                        className="flex items-center gap-2 hover:text-red-400 font-medium transition-colors"
+                    >
+                        <FiTrash2 /> Xóa tất cả
+                    </button>
+                    <button 
+                        onClick={() => setSelectedIds([])}
+                        className="p-1 hover:bg-slate-700 rounded-full transition-colors ml-2"
+                        title="Bỏ chọn"
+                    >
+                        <FiX />
+                    </button>
+                </div>
+            )}
+
+            {/* CÁC MODAL CŨ */}
             <ReturnInvoiceModal 
                 isOpen={!!invoiceToReturn}
                 onClose={() => setInvoiceToReturn(null)}
@@ -300,7 +389,7 @@ const InvoicesPage: React.FC = () => {
                 invoiceNumber={invoiceToReturn?.code}
             />
 
-            {/* Modal Xóa */}
+            {/* Modal Xóa Lẻ */}
             {invoiceToDelete && (
                 <ConfirmationModal 
                     isOpen={!!invoiceToDelete} onClose={() => setInvoiceToDelete(null)}
@@ -310,6 +399,36 @@ const InvoicesPage: React.FC = () => {
                     <p className="text-sm text-red-500 mt-2">Lưu ý: Hàng hóa sẽ được trả về kho và công nợ khách hàng sẽ được hoàn tác.</p>
                 </ConfirmationModal>
             )}
+
+            {/* [MỚI] Modal Xóa Hàng Loạt */}
+            {isBulkDeleting && (
+                <ConfirmationModal 
+                    isOpen={isBulkDeleting} onClose={() => setIsBulkDeleting(false)}
+                    onConfirm={handleBulkDelete} title={`Xóa ${selectedIds.length} hóa đơn?`} confirmColor="bg-red-600" confirmText="Xác nhận xóa hết"
+                >
+                    <p>Bạn đang chọn xóa <b>{selectedIds.length}</b> hóa đơn cùng lúc.</p>
+                    <p className="text-sm text-red-500 mt-2 font-bold">Hành động này không thể hoàn tác!</p>
+                </ConfirmationModal>
+            )}
+
+            {selectedInvoiceId && (
+                <InvoiceDetailsModal
+                    invoiceId={selectedInvoiceId}
+                    onClose={() => setSelectedInvoiceId(null)}
+                    onPrint={(id) => {
+                        setSelectedInvoiceId(null); 
+                        handlePrintClick(id);
+                    }}
+                />
+            )}
+
+            {printingInvoiceId && (
+                <PrintInvoiceModal
+                    invoiceId={printingInvoiceId}
+                    onClose={() => setPrintingInvoiceId(null)}
+                />
+            )}
+
         </div>
     );
 };

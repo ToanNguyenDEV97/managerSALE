@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 // Imports
 import { useProducts } from '../hooks/useProducts';
 import { useAllCustomers, useSaveCustomer } from '../hooks/useCustomers';
-import { useCreateOrder } from '../hooks/useOrders';
+import { useSaveOrder } from '../hooks/useOrders';
 import QuickCustomerModal from '../components/QuickCustomerModal';
 
 // 2. THÊM import useAppContext để lấy hàm chuyển trang
@@ -27,7 +27,7 @@ const CreateOrderPage: React.FC = () => {
   const { data: customersData } = useAllCustomers();
   const customers = Array.isArray(customersData) ? customersData : (customersData?.data || []);
 
-  const createOrderMutation = useCreateOrder();
+  const createOrderMutation = useSaveOrder();
   const saveCustomerMutation = useSaveCustomer();
 
   // Local State

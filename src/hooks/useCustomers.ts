@@ -14,8 +14,8 @@ export const useCustomers = (page = 1, search = '', limit = 10) => {
 // Hook tìm kiếm nhanh (dùng cho dropdown chọn khách)
 export const useAllCustomers = () => {
     return useQuery({
-      queryKey: ['customers', 'all'],
-      queryFn: () => api(`/api/customers?limit=1000`), // Lấy nhiều để search client-side cho nhanh
+        queryKey: ['customers', 'all'],
+        queryFn: () => api('/api/customers?limit=1000'), // Lấy tất cả khách hàng
     });
 };
 

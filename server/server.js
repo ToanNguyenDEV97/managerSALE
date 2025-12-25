@@ -149,6 +149,97 @@ authRouter.get('/google/callback', passport.authenticate('google', { failureRedi
 );
 app.use('/api/auth', authRouter);
 
+// --- TOOL SỬA LỖI V4 (Fix lỗi "customerId required" & Chuẩn hóa dữ liệu) ---
+apiRouter.get('/fix-invoices-data', async (req, res) => {
+    try {
+        const invoices = await Invoice.find({});
+        
+        // Lấy danh sách ID khách hàng hợp lệ
+        const customers = await Customer.find({}, '_id');
+        const validCustomerIds = new Set(customers.map(c => c._id.toString()));
+
+        let count = 0;
+        
+        for (const inv of invoices) {
+            let changed = false;
+
+            // 1. [QUAN TRỌNG] FIX LỖI ITEMS BỊ NULL (Nguyên nhân sập giao diện)
+            if (!inv.items || !Array.isArray(inv.items)) {
+                inv.items = []; // Gán mảng rỗng để không bị lỗi .map()
+                changed = true;
+            }
+
+            // 2. [QUAN TRỌNG] FIX LỖI THIẾU KHÁCH HÀNG (Nguyên nhân không lưu được)
+            let needCustomer = false;
+            if (!inv.customerId) needCustomer = true;
+            else if (!validCustomerIds.has(inv.customerId.toString())) needCustomer = true;
+
+            if (needCustomer) {
+                // Tìm khách lẻ của cửa hàng này
+                let guest = await Customer.findOne({ 
+                    organizationId: inv.organizationId, 
+                    name: 'Khách lẻ' 
+                });
+                
+                // Nếu chưa có thì tạo mới
+                if (!guest) {
+                    guest = await new Customer({
+                        name: 'Khách lẻ',
+                        phone: '0000000000',
+                        address: 'Tại quầy',
+                        organizationId: inv.organizationId
+                    }).save();
+                    validCustomerIds.add(guest._id.toString());
+                }
+                
+                // Gán khách lẻ vào hóa đơn lỗi
+                inv.customerId = guest._id;
+                inv.customerName = guest.name;
+                changed = true;
+            }
+
+            // 3. FIX NGÀY THÁNG (Chuyển về chuỗi YYYY-MM-DD)
+            if (!inv.issueDate) {
+                inv.issueDate = new Date().toISOString().split('T')[0];
+                changed = true;
+            } else if (typeof inv.issueDate !== 'string') {
+                try {
+                    inv.issueDate = new Date(inv.issueDate).toISOString().split('T')[0];
+                    changed = true;
+                } catch (e) {}
+            }
+
+            // 4. FIX TRẠNG THÁI & TIỀN
+            if (inv.paidAmount === undefined || inv.paidAmount === null) {
+                inv.paidAmount = 0;
+                changed = true;
+            }
+            
+            // Tính lại trạng thái
+            const debt = (inv.totalAmount || 0) - (inv.paidAmount || 0);
+            if (debt <= 0 && inv.status !== 'Đã thanh toán') {
+                inv.status = 'Đã thanh toán';
+                changed = true;
+            } else if (debt > 0) {
+                 if (inv.paidAmount > 0 && inv.status !== 'Thanh toán một phần') {
+                     inv.status = 'Thanh toán một phần';
+                     changed = true;
+                 } else if (inv.paidAmount === 0 && inv.status !== 'Chưa thanh toán') {
+                     inv.status = 'Chưa thanh toán';
+                     changed = true;
+                 }
+            }
+
+            // LƯU LẠI
+            if (changed) {
+                await inv.save();
+                count++;
+            }
+        }
+        res.json({ message: `✅ Đã sửa lỗi thành công ${count} hóa đơn! (Đã fix items null & gán Khách lẻ)` });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 // --- PROTECTED ENDPOINTS ---
 apiRouter.use(protect);
 apiRouter.get('/auth/me', async (req, res) => res.json(req.user));
@@ -427,7 +518,7 @@ apiRouter.post('/invoices/:id/return', async (req, res) => {
             }).save({ session });
         }
 
-        invoice.status = 'Đã hoàn trả';
+        invoice.status = 'Hủy';
         // Có thể lưu thêm reason vào invoice nếu Model Invoice của bạn có trường note/cancelReason
         if (reason) invoice.note = (invoice.note ? invoice.note + '. ' : '') + `Lý do trả: ${reason}`;
         
@@ -482,7 +573,7 @@ apiRouter.get('/invoices', async (req, res) => {
         // D. Thực hiện truy vấn (Chỉ khai báo 'total' 1 lần ở đây)
         const total = await Invoice.countDocuments(query);
         const invoices = await Invoice.find(query)
-            .sort({ issueDate: -1 }) // Mới nhất lên đầu
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
             .skip((page - 1) * limit)
             .limit(limit);
 
@@ -494,6 +585,22 @@ apiRouter.get('/invoices', async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// [MỚI] API Lấy lịch sử thanh toán của 1 hóa đơn
+apiRouter.get('/invoices/:invoiceNumber/history', async (req, res) => {
+    try {
+        const { invoiceNumber } = req.params;
+        // Tìm các phiếu thu/chi có nội dung chứa số hóa đơn (Ví dụ: "Thu nợ HD-00099")
+        const history = await CashFlowTransaction.find({
+            organizationId: req.organizationId,
+            description: { $regex: invoiceNumber, $options: 'i' } 
+        }).sort({ createdAt: -1 }); // Mới nhất lên đầu
+        
+        res.json(history);
+    } catch (e) { 
+        res.status(500).json({ message: e.message }); 
     }
 });
 
@@ -724,6 +831,7 @@ apiRouter.post('/quotes/:id/convert-to-order', async (req, res) => {
 });
 
 // Chuyển Đơn hàng thành Hóa đơn (Kèm xuất kho & tạo phiếu thu nếu có)
+// Chuyển Đơn hàng thành Hóa đơn (Kèm xuất kho & tạo phiếu thu nếu có)
 apiRouter.post('/orders/:id/to-invoice', async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
@@ -735,6 +843,7 @@ apiRouter.post('/orders/:id/to-invoice', async (req, res) => {
 
         const { paymentAmount } = req.body;
 
+        // 1. Trừ kho
         for (const item of order.items) {
             await changeStock({
                 session, organizationId, productId: item.productId, quantityChange: -item.quantity,
@@ -742,27 +851,70 @@ apiRouter.post('/orders/:id/to-invoice', async (req, res) => {
             });
         }
 
+        // 2. [SỬA LỖI QUAN TRỌNG] Chuẩn hóa danh sách hàng hóa
+        // Lỗi cũ: Thiếu costPrice (giá vốn) dẫn đến validation failed
+        // Fix: Dùng Promise.all để map dữ liệu và bổ sung costPrice
+        const invoiceItems = await Promise.all(order.items.map(async (item) => {
+            const itemObj = item.toObject ? item.toObject() : item;
+            
+            // Logic: Nếu item trong đơn không có giá vốn, thử tìm trong bảng Product gốc
+            let finalCostPrice = itemObj.costPrice;
+            
+            // Nếu không có hoặc bằng 0, tìm lại trong kho để lấy giá vốn hiện tại (nếu cần chính xác)
+            if (finalCostPrice === undefined || finalCostPrice === null) {
+                const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
+                finalCostPrice = product ? (product.costPrice || 0) : 0;
+            }
+
+            return {
+                ...itemObj,
+                vat: (itemObj.vat !== undefined) ? itemObj.vat : 0, // Fix lỗi thiếu VAT
+                costPrice: finalCostPrice // Fix lỗi thiếu costPrice
+            };
+        }));
+
+        // 3. Logic tính trạng thái
+        let status = 'Chưa thanh toán';
+        const paid = paymentAmount || 0;
+        const total = order.totalAmount;
+
+        if (paid >= total) {
+            status = 'Đã thanh toán';
+        } else if (paid > 0) {
+            status = 'Thanh toán một phần';
+        }
+
         const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
+        
         const newInvoice = new Invoice({
-            invoiceNumber, customerId: order.customerId, customerName: order.customerName,
-            issueDate: new Date().toLocaleDateString('en-CA'), // Kết quả: "2025-12-23"
-            items: order.items, totalAmount: order.totalAmount, paidAmount: paymentAmount || 0,
-            status: (paymentAmount || 0) >= order.totalAmount ? 'Đã thanh toán' : 'Còn nợ', 
-            note: `Xuất từ đơn hàng ${order.orderNumber}`, organizationId
+            invoiceNumber, 
+            customerId: order.customerId, 
+            customerName: order.customerName,
+            issueDate: new Date().toLocaleDateString('en-CA'), 
+            items: invoiceItems, // Đã có đủ costPrice
+            totalAmount: total, 
+            paidAmount: paid,
+            status: status, 
+            note: `Xuất từ đơn hàng ${order.orderNumber}`, 
+            organizationId
         });
         await newInvoice.save({ session });
 
-        const debtToAdd = order.totalAmount - (paymentAmount || 0);
+        // 4. Cộng nợ khách hàng
+        const debtToAdd = total - paid;
         if (debtToAdd > 0) {
             await Customer.findByIdAndUpdate(order.customerId, { $inc: { debt: debtToAdd } }).session(session);
         }
 
-        if ((paymentAmount || 0) > 0) {
+        // 5. Tạo phiếu thu (nếu có trả trước)
+        if (paid > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
             await new CashFlowTransaction({
-                transactionNumber, type: 'thu', date: new Date(), amount: paymentAmount,
+                transactionNumber, type: 'thu', date: new Date(), amount: paid,
                 description: `Thanh toán hóa đơn ${invoiceNumber}`,
-                payerReceiverName: order.customerName, category: 'Doanh thu bán hàng', organizationId
+                payerReceiverName: order.customerName, 
+                category: 'Khác', // Fix lỗi category
+                organizationId
             }).save({ session });
         }
         
@@ -771,7 +923,11 @@ apiRouter.post('/orders/:id/to-invoice', async (req, res) => {
 
         await session.commitTransaction();
         res.status(201).json(newInvoice);
-    } catch (err) { await session.abortTransaction(); res.status(400).json({ message: err.message }); }
+    } catch (err) { 
+        await session.abortTransaction(); 
+        console.error(err); // Log lỗi ra console server để dễ debug
+        res.status(400).json({ message: err.message }); 
+    }
     finally { session.endSession(); }
 });
 
@@ -851,7 +1007,43 @@ const createTenantCrudEndpoints = (model, pathName) => {
     });
 };
 
+// [FIX] API Xóa danh mục (Kiểm tra ràng buộc sản phẩm trước khi xóa)
+// Đặt đoạn này TRƯỚC dòng createTenantCrudEndpoints(Category...) để nó được ưu tiên chạy trước
+apiRouter.delete('/categories/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { organizationId } = req;
+
+        // BƯỚC 1: Tìm danh mục để lấy cái Tên (VD: "Sách")
+        const categoryDoc = await Category.findOne({ _id: id, organizationId });
+        
+        if (!categoryDoc) {
+            return res.status(404).json({ message: 'Không tìm thấy danh mục cần xóa' });
+        }
+
+        // BƯỚC 2: Đếm số lượng sản phẩm đang dùng tên danh mục này
+        const productCount = await Product.countDocuments({ 
+            organizationId,
+            category: categoryDoc.name 
+        });
+        
+        if (productCount > 0) {
+            // Trả về thông báo lỗi kèm số lượng cụ thể
+            return res.status(400).json({ 
+                message: `Không thể xóa! Danh mục "${categoryDoc.name}" đang chứa ${productCount} sản phẩm. ` 
+            });
+        }
+
+        // BƯỚC 3: Nếu số lượng = 0, tiến hành xóa
+        await Category.deleteOne({ _id: id });
+
+        res.json({ message: 'Đã xóa danh mục thành công' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 createTenantCrudEndpoints(Category, 'categories');
+
 createTenantCrudEndpoints(Customer, 'customers');
 createTenantCrudEndpoints(Supplier, 'suppliers');
 createTenantCrudEndpoints(Quote, 'quotes');
