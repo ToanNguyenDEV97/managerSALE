@@ -761,6 +761,76 @@ apiRouter.delete('/invoices/:id', async (req, res) => {
 // ---------------------------------------------------------
 // 4. ORDERS (ĐƠN HÀNG)
 // ---------------------------------------------------------
+
+// [MỚI] API Lấy danh sách đơn hàng (Có lọc Ngày & Trả về Thống kê KPI)
+apiRouter.get('/orders', async (req, res) => {
+    try {
+        const { page = 1, limit = 10, search, status, startDate, endDate } = req.query;
+        const { organizationId } = req;
+        
+        // 1. Xây dựng bộ lọc
+        let query = { organizationId };
+        
+        // Lọc theo trạng thái
+        if (status && status !== 'all') {
+            query.status = status;
+        }
+
+        // Tìm kiếm (Tên khách hoặc Mã đơn)
+        if (search) {
+            const searchRegex = { $regex: search, $options: 'i' };
+            query.$or = [
+                { customerName: searchRegex },
+                { orderNumber: searchRegex }
+            ];
+        }
+
+        // Lọc theo khoảng thời gian (Từ ngày - Đến ngày)
+        if (startDate && endDate) {
+            query.createdAt = {
+                $gte: new Date(startDate), // 00:00:00
+                $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)) // 23:59:59
+            };
+        }
+
+        // 2. Tính toán thống kê (KPI) dựa trên bộ lọc hiện tại
+        // (Dùng aggregate để tính tổng doanh thu thật thay vì chỉ tính trên trang hiện tại)
+        const statsPromise = Order.aggregate([
+            { $match: query },
+            { $group: {
+                _id: null,
+                totalRevenue: { $sum: "$totalAmount" }, // Tổng tiền
+                totalOrders: { $sum: 1 }, // Tổng số đơn
+                pendingCount: { $sum: { $cond: [{ $eq: ["$status", "Mới"] }, 1, 0] } },
+                doneCount: { $sum: { $cond: [{ $eq: ["$status", "Hoàn thành"] }, 1, 0] } }
+            }}
+        ]);
+
+        // 3. Lấy dữ liệu phân trang
+        const ordersPromise = Order.find(query)
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
+
+        // Chạy song song 2 câu lệnh để tối ưu tốc độ
+        const [statsResult, orders] = await Promise.all([statsPromise, ordersPromise]);
+        const count = await Order.countDocuments(query);
+        
+        // Lấy kết quả thống kê (nếu không có đơn nào thì trả về 0)
+        const stats = statsResult[0] || { totalRevenue: 0, totalOrders: 0, pendingCount: 0, doneCount: 0 };
+
+        res.json({
+            data: orders,
+            total: count,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page,
+            stats: stats // Trả về thêm stats để Frontend hiển thị lên KPI Card
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // API tạo Đơn hàng mới (Sinh mã tự động DH-xxxxx)
 apiRouter.post('/orders', async (req, res) => {
     try {
@@ -1047,6 +1117,7 @@ createTenantCrudEndpoints(Category, 'categories');
 createTenantCrudEndpoints(Customer, 'customers');
 createTenantCrudEndpoints(Supplier, 'suppliers');
 createTenantCrudEndpoints(Quote, 'quotes');
+
 createTenantCrudEndpoints(Order, 'orders');
 createTenantCrudEndpoints(Delivery, 'deliveries');
 createTenantCrudEndpoints(CashFlowTransaction, 'cashflow-transactions');
