@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../utils/api';
+import { api } from '../../utils/api';
 import { FiX, FiPrinter, FiPackage, FiUser, FiCalendar, FiFileText, FiMapPin, FiPhone } from 'react-icons/fi';
 
 interface Props {

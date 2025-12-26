@@ -11,7 +11,7 @@ import ReturnInvoiceModal from '../components/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
 
 import InvoiceDetailsModal from '../components/InvoiceDetailsModal'; 
-import PrintInvoiceModal from '../components/PrintInvoiceModal';
+import PrintInvoiceModal from '../components/business/PrintInvoiceModal';
 
 const InvoicesPage: React.FC = () => {
     const { setPayingInvoiceId } = useAppContext();

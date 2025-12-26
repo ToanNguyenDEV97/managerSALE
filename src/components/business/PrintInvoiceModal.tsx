@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../utils/api'; 
-import { useAppContext } from '../context/DataContext'; 
+import { api } from '../../utils/api'; 
+import { readMoneyToText } from '../../utils/currency';
+import { useAppContext } from '../../context/DataContext'; 
 import { FiX, FiPrinter, FiLoader, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi';
 
 interface Props {
@@ -78,9 +79,6 @@ const docSoThanhChu = (so: number): string => {
 
         // Xử lý trường hợp đặc biệt: không đọc "không trăm" ở nhóm đầu tiên
         if (i === 0 && totalGroups > 1 && tr === 0) {
-             // Logic simplified: hàm docBaSo đã đọc 'không trăm', ta có thể cắt bỏ nếu cần
-             // Tuy nhiên để chuẩn tiền tệ, đọc đầy đủ cũng chấp nhận được.
-             // Để tự nhiên hơn: "Không trăm linh năm nghìn" -> "Năm nghìn"
              if (strDoc.startsWith('không trăm linh ')) strDoc = strDoc.replace('không trăm linh ', '');
              else if (strDoc.startsWith('không trăm ')) strDoc = strDoc.replace('không trăm ', '');
         }
@@ -100,7 +98,20 @@ const docSoThanhChu = (so: number): string => {
 const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
     const { settings } = useAppContext(); 
     
-    // 1. Lấy thông tin hóa đơn
+    // 1. Lấy thông tin CÔNG TY (Mới thêm)
+    const { data: company } = useQuery({
+        queryKey: ['organization'],
+        queryFn: async () => {
+            try {
+                // Gọi API lấy thông tin công ty từ Database
+                const res: any = await api('/api/organization');
+                return res; 
+            } catch (e) { return null; }
+        },
+        staleTime: 1000 * 60 * 5 // Cache 5 phút
+    });
+    
+    // 2. Lấy thông tin HÓA ĐƠN
     const { data: invoice, isLoading, error } = useQuery({
         queryKey: ['invoice', invoiceId],
         queryFn: async () => {
@@ -111,7 +122,7 @@ const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
         retry: 1
     });
 
-    // 2. Lấy thông tin KHÁCH HÀNG (Logic thông minh)
+    // 3. Lấy thông tin KHÁCH HÀNG (Logic thông minh)
     const { data: customerById } = useQuery({
         queryKey: ['customer', invoice?.customerId],
         queryFn: async () => {
@@ -134,7 +145,7 @@ const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
         enabled: !!invoice && !invoice.customerId 
     });
 
-    // 3. TÍNH TOÁN DỮ LIỆU CUỐI CÙNG
+    // 4. TÍNH TOÁN DỮ LIỆU CUỐI CÙNG
     const finalCustomer = useMemo(() => {
         if (customerById) return customerById;
         if (allCustomers && Array.isArray(allCustomers) && invoice?.customerName) {
@@ -180,7 +191,8 @@ const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
                 <div className="flex flex-col md:flex-row gap-6 h-[85vh] w-full max-w-6xl">
                     <div className="flex-1 bg-slate-200 rounded-xl shadow-2xl overflow-y-auto custom-scrollbar p-4 flex justify-center">
                         <div className="bg-white shadow-lg min-h-[297mm] w-[210mm] origin-top scale-75 md:scale-90 lg:scale-100 transition-transform">
-                            <InvoiceA4Content invoice={invoice} customer={finalCustomer} settings={settings} />
+                            {/* [QUAN TRỌNG] Truyền prop company vào component con */}
+                            <InvoiceA4Content invoice={invoice} customer={finalCustomer} company={company} settings={settings} />
                         </div>
                     </div>
 
@@ -199,8 +211,9 @@ const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
                                 <span>Liên kết:</span> 
                                 {finalCustomer ? <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-0.5 rounded">Đã tìm thấy ✓</span> : <span className="text-orange-500 font-bold text-xs bg-orange-50 px-2 py-0.5 rounded flex items-center gap-1"><FiAlertTriangle/> Chưa thấy</span>}
                             </p>
-                            <p className="text-xs mt-1 text-slate-400 italic">
-                                {finalCustomer ? `(Nguồn: ${customerById ? 'ID chính xác' : 'Tìm theo Tên'})` : '(Đang hiển thị thông tin gốc)'}
+                            <p className="flex justify-between items-center mt-1">
+                                <span>Thông tin Công ty:</span> 
+                                {company ? <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-0.5 rounded">Đã lấy ✓</span> : <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-0.5 rounded">Chưa có</span>}
                             </p>
                         </div>
                     </div>
@@ -209,14 +222,15 @@ const PrintInvoiceModal: React.FC<Props> = ({ invoiceId, onClose }) => {
 
             {/* --- PRINT CONTENT --- */}
             <div className="hidden print:block w-full h-full bg-white text-black p-0 m-0">
-                <InvoiceA4Content invoice={invoice} customer={finalCustomer} settings={settings} />
+                <InvoiceA4Content invoice={invoice} customer={finalCustomer} company={company} settings={settings} />
             </div>
         </div>
     );
 };
 
 // COMPONENT NỘI DUNG A4
-const InvoiceA4Content = ({ invoice, customer, settings }: { invoice: any, customer: any, settings: any }) => {
+// [QUAN TRỌNG] Thêm prop company vào đây
+const InvoiceA4Content = ({ invoice, customer, company, settings }: { invoice: any, customer: any, company: any, settings: any }) => {
     const debt = (invoice.totalAmount || 0) - (invoice.paidAmount || 0);
 
     const displayName = customer?.name || invoice.customerName || 'Khách lẻ';
@@ -227,13 +241,20 @@ const InvoiceA4Content = ({ invoice, customer, settings }: { invoice: any, custo
         <div className="p-[10mm] font-sans text-sm h-full relative leading-relaxed">
             {/* Header */}
             <div className="flex justify-between items-start mb-8 border-b-2 border-slate-800 pb-6">
-                <div className="w-2/3 pr-4">
-                    {settings?.logo && <img src={settings.logo} alt="Logo" className="h-16 object-contain mb-3" />}
-                    <h1 className="text-xl font-bold text-blue-800 uppercase leading-tight">{settings?.companyName || 'CỬA HÀNG VẬT LIỆU XÂY DỰNG'}</h1>
-                    <p className="text-sm text-slate-700 mt-2"><b>Địa chỉ:</b> {settings?.address || 'Chưa cập nhật địa chỉ cửa hàng'}</p>
-                    <p className="text-sm text-slate-700"><b>Điện thoại:</b> {settings?.phone || '...'}</p>
+                <div className="w-[65%]">
+                    {/* Hiển thị Tên Công Ty To Rõ */}
+                    <h2 className="font-bold text-lg text-slate-800 uppercase mb-1">
+                        {company?.name || "TÊN CỬA HÀNG (Cần cài đặt)"}
+                    </h2>
+                    {/* Thông tin liên hệ */}
+                    <div className="text-xs text-slate-500 leading-relaxed">
+                        <p><strong>Địa chỉ:</strong> {company?.address || "Chưa cập nhật địa chỉ"}</p>
+                        <p><strong>Hotline:</strong> {company?.phone || "..."}</p>
+                        {company?.email && <p><strong>Email:</strong> {company.email}</p>}
+                        {company?.taxCode && <p><strong>MST:</strong> {company.taxCode}</p>}
+                    </div>
                 </div>
-                <div className="w-1/3 text-right">
+                <div className="text-right">
                     <h2 className="text-2xl font-bold text-red-600 uppercase tracking-wide">HÓA ĐƠN</h2>
                     <h3 className="text-lg font-bold text-slate-800 uppercase">BÁN HÀNG</h3>
                     <div className="mt-2 text-sm text-slate-600">
@@ -309,12 +330,12 @@ const InvoiceA4Content = ({ invoice, customer, settings }: { invoice: any, custo
                 </tbody>
             </table>
 
-            {/* Footer */}
-            <div className="mb-8 text-sm">
-                {/* Gọi hàm đọc số thành chữ */}
-                <p className="font-bold">Bằng chữ: <span className="italic font-normal text-slate-800">{docSoThanhChu(invoice.totalAmount)}</span>.</p>
-            </div>
+            {/* Footer Text */}
+            <p className="font-bold">Bằng chữ: <span className="italic font-normal text-slate-800">
+                {readMoneyToText(invoice.totalAmount)}
+            </span>.</p>
 
+            {/* Signatures */}
             <div className="grid grid-cols-2 gap-10 mt-6 text-center break-inside-avoid">
                 <div>
                     <p className="font-bold uppercase text-sm mb-16">Người mua hàng</p>
@@ -325,8 +346,12 @@ const InvoiceA4Content = ({ invoice, customer, settings }: { invoice: any, custo
                 </div>
             </div>
             
+            {/* Footer Bank Info */}
             <div className="text-center text-xs text-slate-400 mt-12 italic border-t pt-2 w-full">
-                (Cần kiểm tra đối chiếu khi lập, giao, nhận hóa đơn)
+                {company?.bankAccount ? 
+                    `TK: ${company.bankAccount} - ${company.bankName || ''} - Chủ TK: ${company.bankOwner || ''}` : 
+                    "(Cần kiểm tra đối chiếu khi lập, giao, nhận hóa đơn)"
+                }
             </div>
         </div>
     );

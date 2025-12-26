@@ -243,6 +243,28 @@ apiRouter.get('/fix-invoices-data', async (req, res) => {
 // --- PROTECTED ENDPOINTS ---
 apiRouter.use(protect);
 apiRouter.get('/auth/me', async (req, res) => res.json(req.user));
+// --- QUẢN LÝ THÔNG TIN CÔNG TY (SETTINGS) ---
+apiRouter.get('/organization', async (req, res) => {
+    try {
+        const org = await Organization.findById(req.organizationId);
+        if (!org) return res.status(404).json({ message: 'Chưa có thông tin công ty' });
+        res.json(org);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+apiRouter.put('/organization', async (req, res) => {
+    try {
+        const { name, address, phone, email, website, taxCode, logoUrl, bankAccount, bankName, bankOwner } = req.body;
+        
+        // Cập nhật thông tin
+        const org = await Organization.findByIdAndUpdate(
+            req.organizationId,
+            { name, address, phone, email, website, taxCode, logoUrl, bankAccount, bankName, bankOwner },
+            { new: true }
+        );
+        res.json(org);
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
 
 // ---------------------------------------------------------
 // 1. PRODUCTS (SẢN PHẨM)
@@ -426,8 +448,10 @@ apiRouter.post('/invoices', async (req, res) => {
     session.startTransaction();
 
     try {
-        const { customerId, items, totalAmount, paymentAmount } = req.body;
+        // [QUAN TRỌNG] Lấy deliveryInfo từ Frontend gửi lên
+        const { customerId, items, totalAmount, paymentAmount, deliveryInfo, note } = req.body;
         
+        // 1. Xử lý khách hàng
         let customer = null;
         let customerName = 'Khách lẻ';
         if (customerId) {
@@ -435,42 +459,61 @@ apiRouter.post('/invoices', async (req, res) => {
             if (customer) customerName = customer.name;
         }
 
-        // 1. Trừ kho
+        // 2. Trừ kho
         for (const item of items) {
              await changeStock({
                  session, organizationId, productId: item.productId, quantityChange: -item.quantity,
-                 type: 'Xuất hàng', referenceNumber: 'POS', note: `Bán lẻ cho ${customerName}`
+                 type: 'Xuất hàng', referenceNumber: 'POS', 
+                 // Ghi chú nếu là giao hàng
+                 note: deliveryInfo?.isDelivery ? `Xuất giao cho ${customerName}` : `Bán lẻ cho ${customerName}`
              });
         }
         
         const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
         
-        // [ĐÃ SỬA LỖI] 'Còn nợ' -> 'Chưa thanh toán' (Để khớp với Database)
-        const status = paymentAmount >= totalAmount ? 'Đã thanh toán' : (paymentAmount > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán');
+        // [QUAN TRỌNG] Tính phí ship và Tổng tiền cuối cùng
+        const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
+        const finalTotalAmount = Number(totalAmount) + shipFee;
 
+        // Logic trạng thái thanh toán
+        const status = paymentAmount >= finalTotalAmount ? 'Đã thanh toán' : (paymentAmount > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán');
+
+        // 3. Tạo Hóa đơn (Lưu thông tin vào Model bạn vừa gửi)
         const newInvoice = new Invoice({
             invoiceNumber, customerId, customerName,
-            issueDate: new Date().toLocaleDateString('en-CA'), // Kết quả: "2025-12-23"
-            items, totalAmount, paidAmount: paymentAmount,
-            status, organizationId
+            issueDate: new Date().toLocaleDateString('en-CA'),
+            items, 
+            totalAmount: finalTotalAmount, // Lưu tổng tiền (Hàng + Ship)
+            paidAmount: paymentAmount,
+            status, organizationId,
+            note,
+
+            // [MỚI] Mapping dữ liệu vào field 'delivery' trong Model
+            isDelivery: deliveryInfo?.isDelivery || false,
+            delivery: deliveryInfo?.isDelivery ? {
+                address: deliveryInfo.address || '',
+                receiverName: deliveryInfo.receiverName || customerName,
+                phone: deliveryInfo.phone || (customer ? customer.phone : ''),
+                shipFee: shipFee,
+                status: 'Chờ giao'
+            } : undefined
         });
         await newInvoice.save({ session });
 
-        // 2. Cộng nợ khách
-        if (customer && totalAmount > paymentAmount) {
-            await Customer.findByIdAndUpdate(customerId, { $inc: { debt: totalAmount - paymentAmount } }).session(session);
+        // 4. Cộng nợ
+        const debt = finalTotalAmount - paymentAmount;
+        if (customer && debt > 0) {
+            await Customer.findByIdAndUpdate(customerId, { $inc: { debt: debt } }).session(session);
         }
 
-        // 3. Tạo phiếu thu
+        // 5. Tạo phiếu thu
         let savedVoucher = null;
         if (paymentAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
-            
-            // [ĐÃ SỬA LỖI] 'Doanh thu' -> 'Khác' (Để tránh lỗi validation category)
             savedVoucher = new CashFlowTransaction({
                 transactionNumber, type: 'thu', date: new Date(), amount: paymentAmount,
                 payerReceiverName: customerName, description: `Thu tiền POS ${invoiceNumber}`,
-                category: 'Khác', organizationId 
+                category: 'Doanh thu bán hàng', organizationId 
             });
             await savedVoucher.save({ session });
         }
@@ -478,7 +521,11 @@ apiRouter.post('/invoices', async (req, res) => {
         await session.commitTransaction();
         res.status(201).json({ newInvoice, voucherId: savedVoucher ? savedVoucher._id : null });
 
-    } catch (err) { await session.abortTransaction(); res.status(400).json({ message: err.message }); }
+    } catch (err) { 
+        await session.abortTransaction(); 
+        console.error("Lỗi tạo hóa đơn:", err);
+        res.status(400).json({ message: err.message }); 
+    }
     finally { session.endSession(); }
 });
 
@@ -833,20 +880,65 @@ apiRouter.get('/orders', async (req, res) => {
 
 // API tạo Đơn hàng mới (Sinh mã tự động DH-xxxxx)
 apiRouter.post('/orders', async (req, res) => {
+    const { organizationId } = req;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const orderNumber = await getNextSequence(Order, 'DH', req.organizationId);
+        const { customerId, items, totalAmount, paymentAmount, deliveryInfo, note } = req.body;
         
-        // Mặc định trạng thái là 'Mới' nếu không gửi lên
-        const newOrder = new Order({ 
-            ...req.body, 
-            orderNumber, 
-            status: 'Mới',
-            organizationId: req.organizationId 
+        // 1. Logic lấy khách hàng (như cũ)
+        let customer = null;
+        let customerName = 'Khách lẻ';
+        if (customerId) {
+            customer = await Customer.findOne({ _id: customerId, organizationId }).session(session);
+            if (customer) customerName = customer.name;
+        }
+
+        // 2. Tạo mã đơn hàng (ví dụ DH...)
+        const orderNumber = await getNextSequence(Order, 'DH', organizationId);
+        
+        // 3. Tính phí ship
+        const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
+        const finalTotal = Number(totalAmount) + shipFee;
+
+        // 4. Tạo Order
+        const newOrder = new Order({
+            organizationId,
+            orderNumber,
+            customerId,
+            customerName,
+            items,
+            totalAmount: finalTotal,
+            paidAmount: paymentAmount,
+            status: 'Mới', // Mặc định là Mới
+            note,
+            
+            // [QUAN TRỌNG] Lưu thông tin giao hàng
+            isDelivery: deliveryInfo?.isDelivery || false,
+            delivery: deliveryInfo?.isDelivery ? {
+                address: deliveryInfo.address || '',
+                receiverName: deliveryInfo.receiverName || customerName,
+                phone: deliveryInfo.phone || (customer ? customer.phone : ''),
+                shipFee: shipFee,
+                status: 'Chờ giao'
+            } : undefined
         });
+
+        await newOrder.save({ session });
         
-        await newOrder.save();
+        // 5. Trừ kho (Nếu quy trình của bạn là trừ kho ngay khi tạo đơn)
+        // ... (Code trừ kho của bạn) ...
+
+        await session.commitTransaction();
         res.status(201).json(newOrder);
-    } catch (err) { res.status(500).json({ message: err.message }); }
+
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(400).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
 });
 
 // API: Chuyển đổi Báo giá -> Đơn hàng

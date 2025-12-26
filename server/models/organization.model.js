@@ -3,11 +3,24 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 const organizationSchema = new Schema({
-    name: { type: String, required: true }, // Tên công ty, ví dụ: "VLXD An Phát"
-    ownerId: { type: Schema.Types.ObjectId, ref: 'User' } // ID của người chủ
+    name: { type: String, required: true },
+    ownerId: { type: Schema.Types.ObjectId, ref: 'User' },
+    
+    // Thông tin hiển thị (Contact)
+    address: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    email: { type: String, default: '' },
+    website: { type: String, default: '' },
+    
+    // Thông tin pháp lý & Tài chính
+    taxCode: { type: String, default: '' },
+    logoUrl: { type: String, default: '' },
+    bankAccount: { type: String, default: '' },
+    bankName: { type: String, default: '' },
+    bankOwner: { type: String, default: '' }
 }, { timestamps: true });
 
-// ... (thêm virtuals 'id' và toJSON như các model khác) ...
+organizationSchema.virtual('id').get(function () { return this._id.toHexString(); });
+organizationSchema.set('toJSON', { virtuals: true });
 
-const Organization = mongoose.model('Organization', organizationSchema);
-module.exports = Organization;
+module.exports = mongoose.model('Organization', organizationSchema);

@@ -11,7 +11,7 @@ import { useAllCustomers, useSaveCustomer } from '../hooks/useCustomers';
 import { useSaveInvoice } from '../hooks/useInvoices';
 
 // [QUAN TRỌNG] Import Modal In (Hãy chắc chắn đường dẫn file này đúng)
-import PrintInvoiceModal from '../components/PrintInvoiceModal';
+import PrintInvoiceModal from '../components/business/PrintInvoiceModal';
 
 type PaymentMethod = 'cash' | 'debt';
 
