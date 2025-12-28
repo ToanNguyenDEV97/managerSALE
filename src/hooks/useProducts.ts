@@ -98,7 +98,7 @@ export const useDeleteCategory = () => {
 export const useStockHistory = (productId: string) => {
     return useQuery({
         queryKey: ['stock-history', productId],
-        queryFn: () => api(`/api/stock-history/${productId}`),
+        queryFn: () => api(`/api/products/history/:id${productId}`),
         enabled: !!productId, // Chỉ gọi khi có ID sản phẩm
     } as any);
 };
