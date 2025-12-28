@@ -81,14 +81,14 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
         setLoading(true);
         try {
             // Gọi API hoàn tất (gửi kèm OTP để server check lại lần cuối cho an toàn)
-            const res = await api('/api/auth/register-verify', {
+            await api('/api/auth/register-verify', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: formData.email,
                     otp: formData.otp,
-                    displayName: formData.displayName,
-                    password: formData.password
-                })
+                    password: formData.password,
+                    displayName: formData.displayName, // [SỬA LẠI]: Backend cần 'displayName', nhưng state của bạn có thể là 'name'
+                }),
             });
 
             toast.success('Đăng ký thành công!');
