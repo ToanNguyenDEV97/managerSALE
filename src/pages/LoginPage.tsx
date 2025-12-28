@@ -1,151 +1,171 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/DataContext';
-// Import icon Google (hoặc dùng text nếu chưa có icon)
-import { FiCommand } from 'react-icons/fi'; 
+import { FiMail, FiLock, FiLogIn, FiLoader, FiAlertCircle } from 'react-icons/fi'; // Import thêm icon
+import toast from 'react-hot-toast';
 
-const LoginPage: React.FC = () => {
+interface LoginPageProps {
+    onGoToRegister?: () => void;
+}
+
+const LoginPage: React.FC<LoginPageProps> = ({ onGoToRegister }) => {
     const { login } = useAppContext();
+    
+    // State quản lý dữ liệu và trạng thái loading
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [rememberMe, setRememberMe] = useState(false);
+    const [loading, setLoading] = useState(false); // <--- QUAN TRỌNG: State loading
+    const [error, setError] = useState<string | null>(null); // State lỗi inline (nếu muốn hiện lỗi ngay dưới ô input)
 
-    // --- XỬ LÝ TOKEN TỪ GOOGLE (MỚI THÊM) ---
-    useEffect(() => {
-        // 1. Lấy query parameters từ URL
-        const params = new URLSearchParams(window.location.search);
-        const tokenFromUrl = params.get('token');
-        const errorFromUrl = params.get('error');
-
-        if (tokenFromUrl) {
-            // 2. Lưu token vào localStorage
-            localStorage.setItem('token', tokenFromUrl);
-            
-            // 3. Xóa token trên thanh địa chỉ để nhìn cho đẹp
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // 4. Reload lại trang để AppContext nạp user mới
-            window.location.href = '/'; 
-        }
-
-        if (errorFromUrl) {
-            setError('Đăng nhập Google thất bại. Vui lòng thử lại.');
-        }
-    }, []);
-    // ------------------------------------------
-
-    useEffect(() => {
-        const rememberedEmail = localStorage.getItem('rememberedEmail');
-        if (rememberedEmail) {
-            setEmail(rememberedEmail);
-            setRememberMe(true);
-        }
-    }, []);
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
-        try {
-            await login(email, password, rememberMe);
-        } catch (err: any) {
-            setError(err.message || 'Email hoặc mật khẩu không đúng.');
+        setError(null);
+        
+        // 1. Validate sơ bộ
+        if (!email.trim() || !password.trim()) {
+            toast.error('Vui lòng nhập đầy đủ thông tin!');
+            return;
         }
-    };
-    
-    // Hàm chuyển hướng sang Google Login
-    const handleGoogleLogin = () => {
-        // Gọi thẳng vào API Backend
-        window.location.href = 'http://localhost:5001/api/auth/google';
+
+        // 2. Bắt đầu Loading
+        setLoading(true);
+
+        try {
+            // Giả lập độ trễ nhẹ (500ms) để người dùng kịp nhìn thấy hiệu ứng loading (UX trick)
+            // Nếu mạng quá nhanh, loading nháy cái tắt luôn trông sẽ bị giật.
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            await login(email, password);
+            toast.success('Đăng nhập thành công!');
+            // Không cần setLoading(false) ở đây vì login thành công sẽ redirect hoặc reload App
+        } catch (err: any) {
+            console.error(err);
+            const msg = err.message || 'Đăng nhập thất bại';
+            setError(msg); // Hiển thị lỗi màu đỏ dưới nút
+            toast.error(msg);
+            setLoading(false); // <--- Tắt loading nếu lỗi để nhập lại
+        }
     };
 
     return (
-        <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="flex justify-center">
-                    <div className="h-12 w-12 rounded-xl bg-primary-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                        Q
+        // UI: Thêm Background Gradient đẹp mắt
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
+            
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden transform transition-all hover:shadow-2xl animate-fade-in">
+                
+                {/* Header: Logo & Chào mừng */}
+                <div className="bg-primary-600 px-8 py-10 text-center relative overflow-hidden">
+                    {/* Họa tiết trang trí nền (Circles) */}
+                    <div className="absolute top-0 left-0 w-24 h-24 bg-white opacity-10 rounded-full -translate-x-10 -translate-y-10"></div>
+                    <div className="absolute bottom-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full translate-x-10 translate-y-10"></div>
+
+                    <div className="relative z-10">
+                        <div className="h-16 w-16 bg-white rounded-xl mx-auto flex items-center justify-center shadow-lg mb-4">
+                            <span className="text-3xl font-bold text-primary-600">Q</span>
+                        </div>
+                        <h2 className="text-3xl font-bold text-white tracking-tight">Manager SALE</h2>
+                        <p className="text-primary-100 mt-2 text-sm font-medium">Đăng nhập để quản lý cửa hàng</p>
                     </div>
                 </div>
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 dark:text-white">
-                    Đăng nhập hệ thống
-                </h2>
-                <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-400">
-                    Hệ thống Quản lý Bán hàng SaaS
-                </p>
-            </div>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white dark:bg-slate-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200 dark:border-slate-700">
-                    <form className="space-y-6" onSubmit={handleSubmit}>
-                        {error && (
-                            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
-                                {error}
-                            </div>
-                        )}
+                {/* Form Body */}
+                <div className="p-8 pt-10">
+                    <form onSubmit={handleLogin} className="space-y-6">
                         
-                        <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                Email
+                        {/* Input Email */}
+                        <div className="group">
+                            <label className="block text-sm font-medium text-slate-700 mb-1 group-focus-within:text-primary-600 transition-colors">
+                                Email đăng nhập
                             </label>
-                            <div className="mt-1">
-                                <input id="email" name="email" type="email" autoComplete="email" required
-                                    value={email} onChange={(e) => setEmail(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white sm:text-sm" />
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <FiMail className="h-5 w-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="email"
+                                    required
+                                    disabled={loading} // UX: Khóa input khi đang loading
+                                    className="block w-full pl-10 pr-3 py-3 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all sm:text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                    placeholder="admin@example.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
                             </div>
                         </div>
 
-                        <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {/* Input Password */}
+                        <div className="group">
+                            <label className="block text-sm font-medium text-slate-700 mb-1 group-focus-within:text-primary-600 transition-colors">
                                 Mật khẩu
                             </label>
-                            <div className="mt-1">
-                                <input id="password" name="password" type="password" autoComplete="current-password" required
-                                    value={password} onChange={(e) => setPassword(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white sm:text-sm" />
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <FiLock className="h-5 w-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="password"
+                                    required
+                                    disabled={loading}
+                                    className="block w-full pl-10 pr-3 py-3 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all sm:text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                                <input id="remember-me" name="remember-me" type="checkbox"
-                                    checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-slate-500 rounded bg-slate-200 dark:bg-slate-600" />
-                                <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-900 dark:text-slate-300">
-                                    Ghi nhớ tôi
-                                </label>
+                        {/* Thông báo lỗi (nếu có) */}
+                        {error && (
+                            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2 animate-pulse">
+                                <FiAlertCircle className="flex-shrink-0" />
+                                <span>{error}</span>
                             </div>
-                        </div>
+                        )}
 
-                        <div>
-                            <button type="submit"
-                                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
-                                Đăng nhập
-                            </button>
-                        </div>
+                        {/* Nút Đăng nhập (Có Loading Spinner) */}
+                        <button
+                            type="submit"
+                            disabled={loading} // UX: Khóa nút để tránh double-click
+                            className={`
+                                w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-bold text-white 
+                                transition-all duration-200
+                                ${loading 
+                                    ? 'bg-primary-400 cursor-wait' 
+                                    : 'bg-primary-600 hover:bg-primary-700 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'
+                                }
+                            `}
+                        >
+                            {loading ? (
+                                <>
+                                    <FiLoader className="animate-spin -ml-1 mr-2 h-5 w-5" />
+                                    Đang xử lý...
+                                </>
+                            ) : (
+                                <>
+                                    Đăng nhập
+                                    <FiLogIn className="ml-2 h-5 w-5" />
+                                </>
+                            )}
+                        </button>
                     </form>
 
-                    <div className="mt-6">
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-slate-300 dark:border-slate-600" />
-                            </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white dark:bg-slate-800 text-slate-500">Hoặc tiếp tục với</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-6">
-                            <button 
-                                onClick={handleGoogleLogin}
-                                type="button" 
-                                className="w-full flex justify-center items-center gap-3 px-4 py-2.5 border border-slate-300 dark:border-slate-600 shadow-sm text-sm font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 transition-all"
-                            >
-                                <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="h-5 w-5" alt="Google Logo" />
-                                <span>Đăng nhập bằng Google</span>
-                            </button>
-                        </div>
+                    {/* Footer: Chuyển sang Đăng ký */}
+                    <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+                        <p className="text-sm text-slate-600 mb-2">Chưa có tài khoản?</p>
+                        <button
+                            type="button"
+                            onClick={onGoToRegister}
+                            disabled={loading}
+                            className="text-primary-600 font-bold hover:text-primary-700 hover:underline transition-colors disabled:opacity-50"
+                        >
+                            Đăng ký Chủ Cửa Hàng mới
+                        </button>
                     </div>
                 </div>
+            </div>
+            
+            {/* Footer bản quyền nhỏ ở dưới cùng */}
+            <div className="absolute bottom-4 text-slate-400 text-xs">
+                © 2024 ManagerSALE System
             </div>
         </div>
     );

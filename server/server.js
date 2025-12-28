@@ -2,8 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
 require('dotenv').config();
 
 const connectDB = require('./db');
@@ -23,6 +21,7 @@ const Delivery = require('./models/delivery.model');
 const InventoryCheck = require('./models/inventoryCheck.model');
 const CashFlowTransaction = require('./models/cashFlowTransaction.model');
 const StockHistory = require('./models/stockHistory.model');
+const nodemailer = require('nodemailer');
 
 const mongoose = require('mongoose');
 
@@ -37,38 +36,22 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
-// --- PASSPORT CONFIG ---
-app.use(passport.initialize());
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/api/auth/google/callback"
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-        let user = await User.findOne({ googleId: profile.id });
-        if (user) return done(null, user);
-        
-        const newOrg = new Organization({ name: `Cửa hàng của ${profile.displayName}` });
-        await newOrg.save();
-        
-        const newUser = new User({
-            email: profile.emails[0].value,
-            googleId: profile.id,
-            role: 'owner',
-            organizationId: newOrg._id,
-        });
-        await newUser.save();
-        newOrg.ownerId = newUser._id;
-        await newOrg.save();
-        return done(null, newUser);
-    } catch (err) { return done(err, null); }
-  }
-));
+// 1. Cấu hình gửi mail (Dùng Gmail)
+// Lưu ý: Mật khẩu ở đây là "App Password" (Mật khẩu ứng dụng) chứ không phải mật khẩu đăng nhập Gmail thường.
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.MAIL_USER, // Email của bạn (VD: admin@managerSALE.com)
+        pass: process.env.MAIL_PASS  // Mật khẩu ứng dụng 16 ký tự
+    }
+});
+
+// Hàm tạo mã OTP ngẫu nhiên 6 số
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 // --- HELPER FUNCTIONS ---
 const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '30d' });
+    return jwt.sign({ id }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '12h' });
 };
 
 const getNextSequence = async (model, prefix, organizationId) => {
@@ -111,11 +94,6 @@ const changeStock = async ({ session, organizationId, productId, quantityChange,
     return newStock;
 };
 
-// =================================================================
-// --- API ROUTES ---
-// =================================================================
-const apiRouter = express.Router();
-
 const protect = async (req, res, next) => {
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
@@ -130,8 +108,9 @@ const protect = async (req, res, next) => {
     } else { res.status(401).json({ message: 'No token' }); }
 };
 
-// --- AUTH ---
+// --- AUTH (KHU VỰC CÔNG KHAI - KHÔNG CẦN TOKEN) ---
 const authRouter = express.Router();
+
 authRouter.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -143,11 +122,117 @@ authRouter.post('/login', async (req, res) => {
         res.json({ token, user: { id: user._id, email: user.email, role: user.role, organizationId: user.organizationId } });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
-authRouter.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-authRouter.get('/google/callback', passport.authenticate('google', { failureRedirect: '/login', session: false }),
-  (req, res) => { res.redirect(`http://localhost:3000?token=${generateToken(req.user.id)}`); }
-);
+
+// API 1: Gửi yêu cầu đăng ký & Nhận OTP
+authRouter.post('/register-request', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Validation: Bắt buộc phải là Gmail
+        if (!email.endsWith('@gmail.com')) {
+            return res.status(400).json({ message: 'Vui lòng sử dụng tài khoản Gmail thực (@gmail.com) để đăng ký Owner.' });
+        }
+
+        // Kiểm tra xem email đã tồn tại chưa
+        let user = await User.findOne({ email });
+        if (user && user.role === 'owner') { 
+            // Nếu đã là owner rồi thì báo lỗi hoặc yêu cầu login
+             return res.status(400).json({ message: 'Email này đã được đăng ký.' });
+        }
+
+        const otp = generateOTP();
+        const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // Hết hạn sau 5 phút
+
+        // Nếu chưa có user -> tạo tạm để lưu OTP. Nếu có rồi (ví dụ nhân viên cũ muốn lên owner) -> update OTP
+        if (!user) {
+            user = new User({ email, otp, otpExpires, role: 'owner' }); // Tạm thời chưa có organizationId
+        } else {
+            user.otp = otp;
+            user.otpExpires = otpExpires;
+        }
+        await user.save();
+
+        // Gửi mail
+        await transporter.sendMail({
+            from: '"ManagerSALE System" <no-reply@managersale.com>',
+            to: email,
+            subject: 'Mã xác thực đăng ký Owner - ManagerSALE',
+            html: `<h3>Mã OTP của bạn là: <b style="color:blue; font-size:20px;">${otp}</b></h3><p>Mã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ cho ai khác.</p>`
+        });
+
+        res.json({ message: 'Mã OTP đã được gửi về email của bạn.' });
+
+    } catch (err) {
+        // Đây là nơi báo lỗi 500 ra terminal
+        console.error("LỖI GỬI MAIL:", err); 
+        res.status(500).json({ message: 'Lỗi server: ' + err.message });
+    }
+});
+// API 1.5: Kiểm tra OTP hợp lệ
+authRouter.post('/check-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+        
+        if (!user) return res.status(400).json({ message: 'Email chưa gửi yêu cầu.' });
+        if (user.otp !== otp) return res.status(400).json({ message: 'Mã OTP không đúng.' });
+        if (user.otpExpires < new Date()) return res.status(400).json({ message: 'Mã OTP đã hết hạn.' });
+
+        res.json({ message: 'OTP hợp lệ.' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// API 2: Xác thực OTP & Hoàn tất đăng ký (Tạo Công ty SaaS)
+authRouter.post('/register-verify', async (req, res) => {
+    try {
+        const { email, otp, password, displayName } = req.body; // displayName: Tên chủ shop
+
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).json({ message: 'Email chưa gửi yêu cầu OTP.' });
+
+        // Kiểm tra OTP
+        if (user.otp !== otp) return res.status(400).json({ message: 'Mã OTP không đúng.' });
+        if (user.otpExpires < new Date()) return res.status(400).json({ message: 'Mã OTP đã hết hạn.' });
+
+        // Tạo Công ty mới (Mô hình SaaS)
+        const newOrg = new Organization({ 
+            name: `Cửa hàng của ${displayName || 'Owner'}`,
+            email: email 
+        });
+        await newOrg.save();
+
+        // Cập nhật User thành chính thức
+        user.organizationId = newOrg._id;
+        user.password = password; // Lưu ý: Trong User Model cần có hook pre-save để hash password nhé!
+        user.otp = undefined;     // Xóa OTP sau khi dùng
+        user.otpExpires = undefined;
+        await user.save();
+
+        // Gán owner cho Org
+        newOrg.ownerId = user._id;
+        await newOrg.save();
+
+        // Tạo token đăng nhập luôn
+        const token = generateToken(user.id);
+        res.json({ 
+            message: 'Đăng ký thành công!', 
+            token, 
+            user: { id: user._id, email: user.email, role: 'owner', organizationId: user.organizationId } 
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 app.use('/api/auth', authRouter);
+// =================================================================
+// --- API ROUTES ---
+// =================================================================
+const apiRouter = express.Router();
+apiRouter.use(protect);
 
 // --- TOOL SỬA LỖI V4 (Fix lỗi "customerId required" & Chuẩn hóa dữ liệu) ---
 apiRouter.get('/fix-invoices-data', async (req, res) => {
@@ -241,7 +326,6 @@ apiRouter.get('/fix-invoices-data', async (req, res) => {
 });
 
 // --- PROTECTED ENDPOINTS ---
-apiRouter.use(protect);
 apiRouter.get('/auth/me', async (req, res) => res.json(req.user));
 // --- QUẢN LÝ THÔNG TIN CÔNG TY (SETTINGS) ---
 apiRouter.get('/organization', async (req, res) => {
@@ -1215,24 +1299,6 @@ createTenantCrudEndpoints(Delivery, 'deliveries');
 createTenantCrudEndpoints(CashFlowTransaction, 'cashflow-transactions');
 createTenantCrudEndpoints(InventoryCheck, 'inventory-checks');
 
-// Fix dữ liệu tồn kho cũ
-apiRouter.get('/fix-stock-history', async (req, res) => {
-    try {
-        const products = await Product.find({ organizationId: req.organizationId });
-        let count = 0;
-        for (const p of products) {
-            const exist = await StockHistory.exists({ productId: p._id });
-            if (!exist && p.stock > 0) {
-                await new StockHistory({
-                    organizationId: p.organizationId, productId: p._id, productName: p.name, sku: p.sku,
-                    changeAmount: p.stock, balanceAfter: p.stock, type: 'Khởi tạo', note: 'Fix tồn đầu', date: p.createdAt
-                }).save();
-                count++;
-            }
-        }
-        res.json({ message: `Đã fix ${count} sản phẩm.` });
-    } catch (err) { res.status(500).json({ message: err.message }); }
-});
 
 app.use('/api', apiRouter);
 app.use(express.static(path.join(__dirname, '..')));

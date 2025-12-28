@@ -2,7 +2,7 @@
 const API_SERVER_URL = 'http://localhost:5001'; // Hoặc đường dẫn server của bạn
 
 export const api = async (endpoint: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     
     const headers = {
         'Content-Type': 'application/json',

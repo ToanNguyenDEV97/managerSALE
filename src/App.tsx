@@ -42,6 +42,7 @@ import ReportsPage from './pages/ReportsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import TaxPage from './pages/TaxPage';
+import RegisterPage from './pages/RegisterPage';
 
 // Pages In ấn
 import PrintInvoicePage from './pages/PrintInvoicePage';
@@ -95,9 +96,18 @@ const MainApp: React.FC = () => {
         viewingInvoiceId
     } = useAppContext();
 
+    // State để quản lý chế độ đăng ký (nếu cần)
+    const [isRegistering, setIsRegistering] = useState(false);
+
     // 1. Nếu chưa đăng nhập -> Hiện trang Login
     if (!isAuthenticated) {
-        return <LoginPage />;
+        if (isRegistering) {
+            // Hiển thị trang đăng ký, truyền hàm để quay lại login
+            return <RegisterPage onBackToLogin={() => setIsRegistering(false)} />;
+        }
+        // Hiển thị trang đăng nhập
+        // LƯU Ý: Bạn cần sửa LoginPage một chút để nhận prop chuyển sang đăng ký (xem Bước 3)
+        return <LoginPage onGoToRegister={() => setIsRegistering(true)} />;
     }
 
     // 2. Nếu đang ở chế độ In ấn -> Hiện trang In
