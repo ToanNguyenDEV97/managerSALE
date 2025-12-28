@@ -1,31 +1,28 @@
-// src/index.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { DataProvider } from './context/DataContext';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'; // Import mới
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'react-hot-toast';
+// [THÊM] Import BrowserRouter
+import { BrowserRouter } from 'react-router-dom';
 
-// Tạo Client quản lý cache
-const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            refetchOnWindowFocus: false, // Không tự load lại khi focus tab
-            retry: 1, // Thử lại 1 lần nếu lỗi
-        },
-    },
-});
+const queryClient = new QueryClient();
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error("Could not find root element");
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
 
-const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {/* Bọc QueryClientProvider ở ngoài cùng hoặc trong DataProvider đều được */}
-    <QueryClientProvider client={queryClient}>
+    {/* [THÊM] Bọc BrowserRouter ở ngoài cùng (hoặc trong QueryClientProvider đều được) */}
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
         <DataProvider>
-          <App />
+            <App />
+            <Toaster position="top-right" />
         </DataProvider>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );

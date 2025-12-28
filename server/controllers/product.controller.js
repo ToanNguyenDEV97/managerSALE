@@ -4,6 +4,7 @@ const Product = require('../models/product.model');
 const StockHistory = require('../models/stockHistory.model');
 const { getNextSequence } = require('../utils/sequence');
 const { changeStock } = require('../utils/stockUtils');
+const { PREFIXES } = require('../utils/constants');
 
 // 1. Lấy danh sách sản phẩm
 exports.getProducts = async (req, res) => {
@@ -26,7 +27,7 @@ exports.getProducts = async (req, res) => {
 exports.createProduct = async (req, res) => {
     try {
         let sku = req.body.sku;
-        if (!sku) sku = await getNextSequence(Product, 'SP', req.organizationId);
+        if (!sku) sku = await getNextSequence(Product, PREFIXES.PRODUCT, req.organizationId);
         
         const productData = { ...req.body, sku, organizationId: req.organizationId };
         if (productData.vat === undefined) productData.vat = 0;

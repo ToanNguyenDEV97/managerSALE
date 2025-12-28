@@ -6,6 +6,7 @@ const StockHistory = require('../models/stockHistory.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
 const { getNextSequence } = require('../utils/sequence');
 const { changeStock } = require('../utils/stockUtils');
+const { PREFIXES } = require('../utils/constants');
 
 // 1. Lấy danh sách hóa đơn (Lọc + Phân trang)
 exports.getInvoices = async (req, res) => {
@@ -97,7 +98,7 @@ exports.createInvoice = async (req, res) => {
         // Tạo phiếu thu
         let savedVoucher = null;
         if (paymentAmount > 0) {
-            const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
+            const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
             savedVoucher = new CashFlowTransaction({
                 transactionNumber, type: 'thu', date: new Date(), amount: paymentAmount,
                 payerReceiverName: customerName, description: `Thu tiền POS ${invoiceNumber}`,
@@ -139,7 +140,7 @@ exports.returnInvoice = async (req, res) => {
 
         // Hoàn tiền
         if (invoice.paidAmount > 0) {
-            const transactionNumber = await getNextSequence(CashFlowTransaction, 'PC', organizationId);
+            const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT_SLIP, organizationId);
             await new CashFlowTransaction({
                 transactionNumber, type: 'chi', date: new Date(), amount: invoice.paidAmount,
                 payerReceiverName: invoice.customerName, 
@@ -181,7 +182,7 @@ exports.payInvoice = async (req, res) => {
             await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { debt: -payAmount } }).session(session);
         }
 
-        const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
+        const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
         await new CashFlowTransaction({
             transactionNumber, type: 'thu', date: new Date(), amount: payAmount,
             payerReceiverName: invoice.customerName, description: `Thu nợ hóa đơn ${invoice.invoiceNumber}`,

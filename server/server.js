@@ -108,7 +108,10 @@ apiRouter.get('/fix-invoices-data', async (req, res) => {
 });
 
 // --- PROTECTED ENDPOINTS ---
-apiRouter.get('/auth/me', async (req, res) => res.json(req.user));
+apiRouter.get('/auth/me', async (req, res) => {
+    if (!req.user) return res.status(401).json({ message: 'User not found' });
+    res.json(req.user);
+});
 
 // --- SETTINGS ---
 apiRouter.get('/organization', async (req, res) => {

@@ -20,9 +20,6 @@ exports.login = async (req, res) => {
 exports.registerRequest = async (req, res) => {
     try {
         const { email } = req.body;
-        if (!email.endsWith('@gmail.com')) {
-            return res.status(400).json({ message: 'Vui lòng sử dụng tài khoản Gmail thực (@gmail.com).' });
-        }
         let user = await User.findOne({ email });
         if (user && user.role === 'owner') return res.status(400).json({ message: 'Email này đã được đăng ký.' });
 

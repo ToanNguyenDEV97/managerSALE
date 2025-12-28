@@ -7,6 +7,7 @@ const Product = require('../models/product.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
 const { getNextSequence } = require('../utils/sequence');
 const { changeStock } = require('../utils/stockUtils');
+const { PREFIXES } = require('../utils/constants');
 
 // 1. Lấy danh sách đơn hàng (Kèm thống kê KPI)
 exports.getOrders = async (req, res) => {
@@ -57,7 +58,7 @@ exports.createOrder = async (req, res) => {
             if (customer) customerName = customer.name;
         }
 
-        const orderNumber = await getNextSequence(Order, 'DH', organizationId);
+        const orderNumber = await getNextSequence(Order, PREFIXES.ORDER, organizationId);
         const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
         const finalTotal = Number(totalAmount) + shipFee;
 
@@ -109,7 +110,7 @@ exports.convertOrderToInvoice = async (req, res) => {
         }));
 
         const status = (paymentAmount || 0) >= order.totalAmount ? 'Đã thanh toán' : ((paymentAmount || 0) > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán');
-        const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
+        const invoiceNumber = await getNextSequence(Invoice, PREFIXES.INVOICE, organizationId);
         
         const newInvoice = new Invoice({
             invoiceNumber, customerId: order.customerId, customerName: order.customerName,
@@ -127,7 +128,7 @@ exports.convertOrderToInvoice = async (req, res) => {
 
         // Phiếu thu
         if ((paymentAmount || 0) > 0) {
-            const transactionNumber = await getNextSequence(CashFlowTransaction, 'PT', organizationId);
+            const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
             await new CashFlowTransaction({
                 transactionNumber, type: 'thu', date: new Date(), amount: paymentAmount,
                 description: `Thanh toán hóa đơn ${invoiceNumber}`, payerReceiverName: order.customerName, 
@@ -151,7 +152,7 @@ exports.convertQuoteToOrder = async (req, res) => {
         if (!quote) return res.status(404).json({ message: 'Không tìm thấy báo giá' });
         if (quote.status === 'Đã chuyển đổi') return res.status(400).json({ message: 'Báo giá này đã chuyển đổi rồi!' });
 
-        const orderNumber = await getNextSequence(Order, 'DH', req.organizationId);
+        const orderNumber = await getNextSequence(Order, PREFIXES.ORDER, req.organizationId);
         const newOrder = new Order({
             organizationId: req.organizationId, orderNumber, customerId: quote.customerId, customerName: quote.customerName,
             items: quote.items.map(item => ({

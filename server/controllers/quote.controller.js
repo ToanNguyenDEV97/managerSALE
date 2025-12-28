@@ -1,5 +1,6 @@
 const Quote = require('../models/quote.model');
 const { getNextSequence } = require('../utils/sequence');
+const { PREFIXES } = require('../utils/constants');
 
 exports.getQuotes = async (req, res) => {
     try { const data = await Quote.find({ organizationId: req.organizationId }).sort({ createdAt: -1 }); res.json({ data }); } 
@@ -16,7 +17,7 @@ exports.getQuoteById = async (req, res) => {
 
 exports.createQuote = async (req, res) => {
     try {
-        const quoteNumber = await getNextSequence(Quote, 'BG', req.organizationId);
+        const quoteNumber = await getNextSequence(Quote, PREFIXES.QUOTE, req.organizationId);
         const newQuote = new Quote({ ...req.body, quoteNumber, organizationId: req.organizationId });
         await newQuote.save();
         res.status(201).json(newQuote);

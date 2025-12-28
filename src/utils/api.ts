@@ -1,20 +1,27 @@
 // src/utils/api.ts
 const API_SERVER_URL = 'http://localhost:5001'; // Hoặc đường dẫn server của bạn
 
-export const api = async (endpoint: string, options: RequestInit = {}) => {
-    const token = sessionStorage.getItem('token');
+export const api = async (url: string, options: RequestInit = {}) => {
+    // 1. Lấy token từ Local hoặc Session
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     
-    const headers = {
+    // 2. Chuẩn bị Header
+    const headers: any = {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
     };
+    // [QUAN TRỌNG] Nếu có token thì phải gắn vào Header
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
 
-    const response = await fetch(`${API_SERVER_URL}${endpoint}`, {
+    // 3. Gọi Fetch
+    const response = await fetch(url, {
         ...options,
         headers,
     });
-
+    
+    // 4. Xử lý lỗi
     if (!response.ok) {
         // Cố gắng đọc lỗi từ server trả về
         const errorData = await response.json().catch(() => ({}));

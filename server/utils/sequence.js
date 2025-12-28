@@ -1,17 +1,48 @@
+const { PREFIXES } = require('./constants');
+
 const getNextSequence = async (model, prefix, organizationId) => {
-    const sequenceField = {
-        'HD': 'invoiceNumber', 'PT': 'transactionNumber', 'PC': 'transactionNumber',
-        'PN': 'purchaseNumber', 'BG': 'quoteNumber', 'DH': 'orderNumber',
-        'PGH': 'deliveryNumber', 'PKK': 'checkNumber', 'SP': 'sku',
-        'TH': 'returnNumber'
-    }[prefix];
+    // Mapping Prefix sang tên trường trong DB
+    // (Dùng biến từ constants để đảm bảo đồng bộ)
+    const fieldMap = {
+        [PREFIXES.INVOICE]: 'invoiceNumber',
+        [PREFIXES.PRODUCT]: 'sku',
+        [PREFIXES.ORDER]: 'orderNumber',
+        [PREFIXES.PURCHASE]: 'purchaseNumber',
+        [PREFIXES.QUOTE]: 'quoteNumber',
+        [PREFIXES.PAYMENT]: 'transactionNumber',
+        [PREFIXES.PAYMENT_SLIP]: 'transactionNumber',
+        [PREFIXES.DELIVERY]: 'deliveryNumber',
+        [PREFIXES.CHECK]: 'checkNumber',
+        [PREFIXES.RETURN]: 'returnNumber'
+    };
+
+    const sequenceField = fieldMap[prefix];
+    if (!sequenceField) {
+        // Fallback: Nếu không tìm thấy mapping, thử đoán tên trường
+        // Nhưng tốt nhất là nên define đủ trong fieldMap
+        console.warn(`Warning: Chưa config fieldMap cho prefix ${prefix}`);
+        return `${prefix}-00001`; 
+    }
     
-    const lastDoc = await model.findOne({ organizationId, [sequenceField]: new RegExp('^' + prefix) }).sort({ [sequenceField]: -1 });
+    // Logic tìm số tiếp theo
+    const lastDoc = await model.findOne({ 
+        organizationId, 
+        [sequenceField]: new RegExp('^' + prefix) 
+    }).sort({ [sequenceField]: -1 });
+
     if (!lastDoc || !lastDoc[sequenceField]) return `${prefix}-00001`;
 
-    const lastNumStr = lastDoc[sequenceField].split('-')[1];
-    const lastNum = parseInt(lastNumStr, 10);
-    return `${prefix}-${(lastNum + 1).toString().padStart(5, '0')}`;
+    try {
+        const parts = lastDoc[sequenceField].split('-');
+        const lastNumStr = parts[parts.length - 1]; // Lấy phần số cuối cùng
+        const lastNum = parseInt(lastNumStr, 10);
+        
+        if (isNaN(lastNum)) return `${prefix}-00001`; // Phòng trường hợp data cũ bị lỗi
+        
+        return `${prefix}-${(lastNum + 1).toString().padStart(5, '0')}`;
+    } catch (e) {
+        return `${prefix}-00001`;
+    }
 };
 
 module.exports = { getNextSequence };

@@ -5,6 +5,7 @@ const Product = require('../models/product.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
 const { getNextSequence } = require('../utils/sequence');
 const { changeStock } = require('../utils/stockUtils');
+const { PREFIXES } = require('../utils/constants');
 
 // 1. Lấy danh sách phiếu nhập
 exports.getPurchases = async (req, res) => {
@@ -23,7 +24,7 @@ exports.createPurchase = async (req, res) => {
         const supplier = await Supplier.findOne({ _id: supplierId, organizationId }).session(session);
         if (!supplier) throw new Error("Nhà cung cấp không tồn tại.");
 
-        const purchaseNumber = await getNextSequence(Purchase, 'PN', organizationId);
+        const purchaseNumber = await getNextSequence(Purchase, PREFIXES.PURCHASE, organizationId);
         const validDate = issueDate || new Date();
 
         // Cộng kho
@@ -43,7 +44,7 @@ exports.createPurchase = async (req, res) => {
 
         // Tạo phiếu chi
         if ((paidAmount || 0) > 0) {
-            const transactionNumber = await getNextSequence(CashFlowTransaction, 'PC', organizationId);
+            const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT_SLIP, organizationId);
             await new CashFlowTransaction({
                 transactionNumber, type: 'chi', date: validDate, amount: paidAmount,
                 payerReceiverName: supplier.name, description: `Thanh toán nhập hàng ${purchaseNumber}`,
