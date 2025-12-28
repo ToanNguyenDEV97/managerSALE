@@ -73,15 +73,23 @@ export const useDeleteQuote = () => {
 export const useConvertToOrder = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (quoteId: string) => api(`/api/quotes/${quoteId}/convert-to-order`, { method: 'POST' }),
+        // [SỬA ĐỔI QUAN TRỌNG TẠI ĐÂY]
+        // Cũ: /api/quotes/${quoteId}/convert-to-order
+        // Mới: /api/orders/convert-quote/${quoteId}
+        mutationFn: (quoteId: string) => api(`/api/orders/convert-quote/${quoteId}`, { method: 'POST' }),
+        
         onSuccess: () => {
-            // Cập nhật lại danh sách Báo giá (để thấy trạng thái mới)
+            // Cập nhật lại danh sách Báo giá (để thấy trạng thái mới 'Đã chuyển đổi')
             queryClient.invalidateQueries({ queryKey: ['quotes'] });
-            // Cập nhật lại danh sách Đơn hàng (để thấy đơn mới)
+            
+            // Cập nhật lại danh sách Đơn hàng (để thấy đơn hàng mới vừa sinh ra)
             queryClient.invalidateQueries({ queryKey: ['orders'] });
+            
+            // Lấy Dashboard mới nhất (vì doanh thu/đơn hàng thay đổi)
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] }); 
             
             toast.success('Đã chuyển thành Đơn hàng thành công! 🚀');
         },
-        onError: (err: any) => toast.error(err.message),
+        onError: (err: any) => toast.error(err.message || 'Lỗi chuyển đổi'),
     });
 };
