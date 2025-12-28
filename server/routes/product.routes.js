@@ -1,16 +1,18 @@
-// server/routes/product.routes.js
 const express = require('express');
 const router = express.Router();
-const { getProducts, createProduct, updateProduct, deleteProduct, getProductHistory } = require('../controllers/product.controller');
 
-// Lưu ý: Chúng ta không cần gọi 'protect' ở đây, 
-// vì chúng ta sẽ gọi nó ở server.js trước khi vào file này.
+// [THÊM DÒNG NÀY] Import Controller
+const productController = require('../controllers/product.controller'); 
 
-router.get('/', getProducts);         // GET /api/products
-router.post('/', createProduct);      // POST /api/products
-router.put('/:id', updateProduct);    // PUT /api/products/:id
-router.delete('/:id', deleteProduct); // DELETE /api/products/:id
+// Import Middleware và Validation (bạn đã có)
+const validate = require('../middleware/validate'); 
+const productValidation = require('../validations/product.validation'); 
 
-router.get('/history/:productId', getProductHistory); // GET /api/products/history/:id (Đổi đường dẫn 1 chút cho gọn)
+// ... Các đoạn code router bên dưới giữ nguyên
+router.get('/', productController.getProducts);
+router.get('/history/:productId', productController.getProductHistory);
+router.post('/', validate(productValidation.createProduct), productController.createProduct);
+router.put('/:id', validate(productValidation.updateProduct), productController.updateProduct);
+router.delete('/:id', productController.deleteProduct);
 
 module.exports = router;

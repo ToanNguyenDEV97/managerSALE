@@ -78,3 +78,13 @@ exports.registerVerify = async (req, res) => {
         res.json({ message: 'Đăng ký thành công!', token, user: { id: user._id, email: user.email, role: 'owner', organizationId: user.organizationId } });
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
+
+// Lấy thông tin người dùng hiện tại
+exports.getMe = async (req, res) => {
+    try {
+        // req.user đã được middleware 'protect' gán vào
+        res.json(req.user);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};

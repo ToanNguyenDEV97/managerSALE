@@ -35,4 +35,7 @@ router.put('/profile', protect, validate(authValidation.updateProfile), async (r
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// Đường dẫn thực tế sẽ là: GET /api/auth/me
+router.get('/me', protect, authController.getMe);
+
 module.exports = router;
