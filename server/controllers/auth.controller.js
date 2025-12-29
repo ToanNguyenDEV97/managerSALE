@@ -59,24 +59,51 @@ exports.checkOtp = async (req, res) => {
 // Hoàn tất đăng ký
 exports.registerVerify = async (req, res) => {
     try {
-        const { email, otp, password, displayName } = req.body;
+        // 1. Nhận biến 'name' từ Frontend
+        const { email, otp, password, name } = req.body;
+        
         const user = await User.findOne({ email });
-        if (!user || user.otp !== otp || user.otpExpires < new Date()) return res.status(400).json({ message: 'OTP lỗi hoặc hết hạn.' });
+        // Kiểm tra OTP...
+        if (!user || user.otp !== otp || user.otpExpires < new Date()) 
+            return res.status(400).json({ message: 'OTP lỗi hoặc hết hạn.' });
 
-        const newOrg = new Organization({ name: `Cửa hàng của ${displayName || 'Owner'}`, email });
+        // 2. Tạo Organization với tên cửa hàng
+        const newOrg = new Organization({ name: `Cửa hàng của ${name}`, email });
         await newOrg.save();
 
+        // 3. Cập nhật User
         user.organizationId = newOrg._id;
         user.password = password; 
-        user.otp = undefined; user.otpExpires = undefined;
+        
+        // [QUAN TRỌNG] Lưu tên người dùng vào DB
+        user.name = name; 
+
+        user.otp = undefined; 
+        user.otpExpires = undefined;
+        
         await user.save();
 
         newOrg.ownerId = user._id;
         await newOrg.save();
 
         const token = generateToken(user.id);
-        res.json({ message: 'Đăng ký thành công!', token, user: { id: user._id, email: user.email, role: 'owner', organizationId: user.organizationId } });
-    } catch (err) { res.status(500).json({ message: err.message }); }
+        
+        // Trả về kết quả
+        res.json({ 
+            message: 'Đăng ký thành công!', 
+            token, 
+            user: { 
+                id: user._id, 
+                email: user.email, 
+                name: user.name, 
+                role: 'owner', 
+                organizationId: user.organizationId 
+            } 
+        });
+    } catch (err) { 
+        console.error("Lỗi đăng ký:", err); // Log lỗi ra terminal để dễ debug
+        res.status(500).json({ message: err.message }); 
+    }
 };
 
 // Lấy thông tin người dùng hiện tại

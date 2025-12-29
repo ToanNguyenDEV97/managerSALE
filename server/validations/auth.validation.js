@@ -1,4 +1,3 @@
-// server/validations/auth.validation.js
 const Joi = require('joi');
 
 const registerRequest = {
@@ -26,7 +25,10 @@ const registerVerify = {
         password: Joi.string().required().min(6).messages({
             'string.min': 'Mật khẩu phải có ít nhất 6 ký tự'
         }),
-        displayName: Joi.string().required(),
+        // [QUAN TRỌNG] Bắt buộc phải là 'name' để khớp với Frontend
+        name: Joi.string().required().messages({
+            'any.required': 'Tên cửa hàng là bắt buộc'
+        }),
     }),
 };
 
@@ -37,22 +39,9 @@ const login = {
     }),
 };
 
-const updateProfile = {
-    body: Joi.object().keys({
-        displayName: Joi.string(),
-        currentPassword: Joi.string(),
-        newPassword: Joi.string().min(6).when('currentPassword', {
-            is: Joi.exist(),
-            then: Joi.required(),
-            otherwise: Joi.optional()
-        })
-    })
-};
-
 module.exports = {
     registerRequest,
     checkOtp,
     registerVerify,
-    login,
-    updateProfile
+    login
 };

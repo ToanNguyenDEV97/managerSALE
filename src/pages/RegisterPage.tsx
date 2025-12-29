@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
 import { FiUser, FiMail, FiLock, FiArrowRight, FiCheckCircle, FiCheck } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
 
 interface RegisterPageProps {
     onBackToLogin: () => void;
@@ -13,11 +12,11 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [loading, setLoading] = useState(false);
 
-    // Dữ liệu Form
+    // Dữ liệu Form - Sử dụng 'name' để khớp với Backend
     const [formData, setFormData] = useState({
         email: '',
         otp: '',
-        displayName: '',
+        name: '', 
         password: '',
         confirmPassword: ''
     });
@@ -29,6 +28,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
     // BƯỚC 1: Nhập Email -> Gửi OTP
     const handleRequestOTP = async (e: React.FormEvent) => {
         e.preventDefault();
+        // Kiểm tra đuôi gmail (tùy chọn)
         if (!formData.email.endsWith('@gmail.com')) {
             return toast.error('Vui lòng sử dụng Gmail (@gmail.com)!');
         }
@@ -55,14 +55,13 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
 
         setLoading(true);
         try {
-            // Gọi API kiểm tra OTP (API mới thêm)
             await api('/api/auth/check-otp', {
                 method: 'POST',
                 body: JSON.stringify({ email: formData.email, otp: formData.otp })
             });
             
             toast.success('Xác thực OTP thành công!');
-            setStep(3); // Chuyển sang bước tạo mật khẩu
+            setStep(3);
         } catch (err: any) {
             toast.error(err.message || 'Mã OTP không đúng');
         } finally {
@@ -76,25 +75,32 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
         
         if (formData.password.length < 6) return toast.error('Mật khẩu phải > 6 ký tự');
         if (formData.password !== formData.confirmPassword) return toast.error('Mật khẩu xác nhận không khớp');
-        if (!formData.displayName) return toast.error('Vui lòng nhập tên cửa hàng');
+        if (!formData.name.trim()) return toast.error('Vui lòng nhập tên cửa hàng');
 
         setLoading(true);
         try {
-            // Gọi API hoàn tất (gửi kèm OTP để server check lại lần cuối cho an toàn)
-            await api('/api/auth/register-verify', {
+            // Gọi API tạo tài khoản
+            const res = await api('/api/auth/register-verify', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: formData.email,
                     otp: formData.otp,
                     password: formData.password,
-                    displayName: formData.displayName, // [SỬA LẠI]: Backend cần 'displayName', nhưng state của bạn có thể là 'name'
+                    name: formData.name, // Quan trọng: Gửi đúng trường 'name'
                 }),
             });
 
             toast.success('Đăng ký thành công!');
-            if (res.token) {
+            
+            // Tự động đăng nhập luôn sau khi đăng ký
+            if (res && res.token) {
+                // Lưu token vào Session (mặc định đăng nhập không lưu)
                 sessionStorage.setItem('token', res.token);
-                window.location.reload(); 
+                // Reload trang để nạp lại App với user mới
+                window.location.href = '/'; 
+            } else {
+                // Nếu server không trả về token thì quay về trang login
+                onBackToLogin();
             }
         } catch (err: any) {
             toast.error(err.message || 'Lỗi đăng ký');
@@ -129,7 +135,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                                 <div className="relative">
                                     <FiMail className="absolute left-3 top-3 text-slate-400" />
                                     <input 
-                                        type="email" name="email" required autoFocus
+                                        type="email" 
+                                        name="email" 
+                                        required autoFocus
                                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                                         placeholder="owner@gmail.com"
                                         value={formData.email} onChange={handleChange}
@@ -138,7 +146,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                             </div>
                             <button 
                                 type="submit" disabled={loading}
-                                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2"
+                                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
                                 {loading ? 'Đang gửi...' : <>Gửi mã xác thực <FiArrowRight /></>}
                             </button>
@@ -151,7 +159,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                             <div className="text-center">
                                 <p className="text-slate-600 mb-2">Mã OTP đã gửi đến: <b>{formData.email}</b></p>
                                 <input 
-                                    type="text" name="otp" required maxLength={6} autoFocus
+                                    type="text" 
+                                    name="otp" 
+                                    required maxLength={6} autoFocus
                                     className="w-full text-center text-3xl tracking-[0.5em] font-bold py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none uppercase"
                                     placeholder="000000"
                                     value={formData.otp} onChange={handleChange}
@@ -159,13 +169,13 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                             </div>
                             <button 
                                 type="submit" disabled={loading}
-                                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2"
+                                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
                                 {loading ? 'Đang kiểm tra...' : <>Xác thực OTP <FiCheck /></>}
                             </button>
                             <button 
                                 type="button" onClick={() => setStep(1)}
-                                className="w-full text-sm text-slate-500 hover:text-slate-700"
+                                className="w-full text-sm text-slate-500 hover:text-slate-700 mt-2"
                             >
                                 Nhập lại Email
                             </button>
@@ -180,10 +190,12 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                                 <div className="relative">
                                     <FiUser className="absolute left-3 top-3 text-slate-400" />
                                     <input 
-                                        type="text" name="displayName" required autoFocus
+                                        type="text" 
+                                        name="name" // [QUAN TRỌNG] Phải là 'name' để khớp với state formData.name
+                                        required autoFocus
                                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                                         placeholder="Ví dụ: Cửa hàng A"
-                                        value={formData.displayName} onChange={handleChange}
+                                        value={formData.name} onChange={handleChange}
                                     />
                                 </div>
                             </div>
@@ -192,7 +204,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                                 <div className="relative">
                                     <FiLock className="absolute left-3 top-3 text-slate-400" />
                                     <input 
-                                        type="password" name="password" required minLength={6}
+                                        type="password" 
+                                        name="password" 
+                                        required minLength={6}
                                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                                         placeholder="••••••••"
                                         value={formData.password} onChange={handleChange}
@@ -204,7 +218,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                                 <div className="relative">
                                     <FiCheckCircle className="absolute left-3 top-3 text-slate-400" />
                                     <input 
-                                        type="password" name="confirmPassword" required minLength={6}
+                                        type="password" 
+                                        name="confirmPassword" 
+                                        required minLength={6}
                                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                                         placeholder="••••••••"
                                         value={formData.confirmPassword} onChange={handleChange}
@@ -213,7 +229,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                             </div>
                             <button 
                                 type="submit" disabled={loading}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-colors"
                             >
                                 {loading ? 'Đang tạo...' : <>Hoàn tất đăng ký <FiCheckCircle /></>}
                             </button>
