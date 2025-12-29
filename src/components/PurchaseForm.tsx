@@ -48,7 +48,6 @@ const PurchaseForm: React.FC = () => {
                 costPrice: 100000,
                 stock: 10,
                 category: "Test",
-                stock: 10,
                 vat: 0
             });
             toast.success("Đã tạo xong!", { id: loadingId });

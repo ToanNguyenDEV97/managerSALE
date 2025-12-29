@@ -21,7 +21,9 @@ exports.registerRequest = async (req, res) => {
     try {
         const { email } = req.body;
         let user = await User.findOne({ email });
-        if (user && user.role === 'owner') return res.status(400).json({ message: 'Email này đã được đăng ký.' });
+        if (user && user.role === 'owner' && user.organizationId) {
+            return res.status(400).json({ message: 'Email này đã được đăng ký' });
+        }
 
         const otp = generateOTP();
         const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
@@ -59,6 +61,7 @@ exports.checkOtp = async (req, res) => {
 // Hoàn tất đăng ký
 exports.registerVerify = async (req, res) => {
     try {
+        console.log("👉 Dữ liệu nhận được từ Frontend:", req.body);
         // 1. Nhận biến 'name' từ Frontend
         const { email, otp, password, name } = req.body;
         

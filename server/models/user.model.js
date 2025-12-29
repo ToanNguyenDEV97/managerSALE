@@ -13,6 +13,7 @@ const userSchema = new Schema({
     password: { 
         type: String 
     },
+    name: { type: String, trim: true },
     role: {
         type: String,
         enum: ['owner', 'nhanvien'], 

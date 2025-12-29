@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom'; // [MỚI] Import hook điều hướng
 import { FiUser, FiMail, FiLock, FiArrowRight, FiCheckCircle, FiCheck } from 'react-icons/fi';
 
-interface RegisterPageProps {
-    onBackToLogin: () => void;
-}
+const RegisterPage: React.FC = () => {
+    const navigate = useNavigate(); // [MỚI] Khởi tạo hook
 
-const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
     // State quản lý các bước (1: Email, 2: OTP, 3: Info & Pass)
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [loading, setLoading] = useState(false);
 
-    // Dữ liệu Form - Sử dụng 'name' để khớp với Backend
+    // Dữ liệu Form
     const [formData, setFormData] = useState({
         email: '',
         otp: '',
@@ -86,7 +85,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                     email: formData.email,
                     otp: formData.otp,
                     password: formData.password,
-                    name: formData.name, // Quan trọng: Gửi đúng trường 'name'
+                    name: formData.name, 
                 }),
             });
 
@@ -94,13 +93,13 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
             
             // Tự động đăng nhập luôn sau khi đăng ký
             if (res && res.token) {
-                // Lưu token vào Session (mặc định đăng nhập không lưu)
+                // Lưu token vào Session
                 sessionStorage.setItem('token', res.token);
                 // Reload trang để nạp lại App với user mới
                 window.location.href = '/'; 
             } else {
-                // Nếu server không trả về token thì quay về trang login
-                onBackToLogin();
+                // [MỚI] Chuyển về trang login bằng navigate
+                navigate('/login');
             }
         } catch (err: any) {
             toast.error(err.message || 'Lỗi đăng ký');
@@ -191,7 +190,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                                     <FiUser className="absolute left-3 top-3 text-slate-400" />
                                     <input 
                                         type="text" 
-                                        name="name" // [QUAN TRỌNG] Phải là 'name' để khớp với state formData.name
+                                        name="name"
                                         required autoFocus
                                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                                         placeholder="Ví dụ: Cửa hàng A"
@@ -239,7 +238,10 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onBackToLogin }) => {
                     <div className="mt-6 pt-6 border-t border-slate-100 text-center">
                         <p className="text-sm text-slate-600">
                             Đã có tài khoản?{' '}
-                            <button onClick={onBackToLogin} className="text-primary-600 font-bold hover:underline">
+                            <button 
+                                onClick={() => navigate('/login')} // [MỚI] Sử dụng navigate
+                                className="text-primary-600 font-bold hover:underline"
+                            >
                                 Đăng nhập
                             </button>
                         </p>

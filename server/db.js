@@ -4,12 +4,12 @@ require('dotenv').config();
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(process.env.MONGODB_URI);
+        const connString = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/managerSALE';
+        await mongoose.connect(connString);
         console.log('✅ MongoDBMongoDB connected successfully.');
         // await seedDatabase();
     } catch (err) {
-        console.error(`❌ Lỗi kết nối MongoDB: ${error.message}`);
-        process.exit(1);
+        console.error(`❌ Lỗi kết nối MongoDB: ${err.message}`);
     }
 };
 
