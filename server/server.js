@@ -16,6 +16,7 @@ const invoiceRoutes = require('./routes/invoice.routes');
 const orderRoutes = require('./routes/order.routes');
 const purchaseRoutes = require('./routes/purchase.routes');
 const quoteRoutes = require('./routes/quote.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 const { protect } = require('./middleware/authMiddleware');
 const { getNextSequence } = require('./utils/sequence');
 const { changeStock } = require('./utils/stockUtils');
@@ -61,6 +62,7 @@ app.use('/api/invoices', protect, invoiceRoutes);
 app.use('/api/orders', protect, orderRoutes);
 app.use('/api/purchases', protect, purchaseRoutes);
 app.use('/api/quotes', protect, quoteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // =================================================================
 // 2. API ROUTES (LOGIC BÁN HÀNG - VẪN GIỮ TRONG NÀY TẠM THỜI)
@@ -121,36 +123,6 @@ apiRouter.put('/organization', async (req, res) => {
         const { name, address, phone, email, website, taxCode, logoUrl, bankAccount, bankName, bankOwner } = req.body;
         const org = await Organization.findByIdAndUpdate(req.organizationId, { name, address, phone, email, website, taxCode, logoUrl, bankAccount, bankName, bankOwner }, { new: true });
         res.json(org);
-    } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-// --- DASHBOARD ---
-apiRouter.get('/dashboard/stats', async (req, res) => {
-    const { organizationId } = req;
-    try {
-        const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(); endOfDay.setHours(23,59,59,999);
-
-        const todaySales = await Invoice.aggregate([
-            { $match: { organizationId, createdAt: { $gte: startOfDay, $lte: endOfDay } } },
-            { $group: { _id: null, total: { $sum: "$totalAmount" }, count: { $sum: 1 } } }
-        ]);
-
-        const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
-        const cashFlow = await CashFlowTransaction.aggregate([
-            { $match: { organizationId, createdAt: { $gte: startOfMonth } } },
-            { $group: { _id: "$type", total: { $sum: "$amount" } } }
-        ]);
-
-        const lowStockCount = await Product.countDocuments({ organizationId, stock: { $lte: 10 } });
-
-        res.json({
-            salesToday: todaySales[0]?.total || 0,
-            ordersToday: todaySales[0]?.count || 0,
-            incomeMonth: cashFlow.find(c => c._id === 'thu')?.total || 0,
-            expenseMonth: cashFlow.find(c => c._id === 'chi')?.total || 0,
-            lowStockCount
-        });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 

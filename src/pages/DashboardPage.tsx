@@ -1,272 +1,211 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { FiDollarSign, FiShoppingCart, FiUsers, FiArchive, FiSearch, FiBell, FiAlertCircle } from 'react-icons/fi';
+import React, { useEffect, useState } from 'react';
+import { 
+    FiDollarSign, FiShoppingCart, FiTrendingUp, FiArchive, 
+    FiLoader, FiPieChart, FiBarChart2, FiActivity 
+} from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import DrillDownModal from '../components/DrillDownModal';
+import { api } from '../utils/api';
 import UserDropdown from '../components/UserDropdown';
-import type { Invoice, PageKey } from '../types';
+import { useNavigate } from 'react-router-dom';
 
-// Import Hooks "All" mới
-import { useAllProducts } from '../hooks/useProducts'; // <-- Đổi dòng này
-import { useAllInvoices } from '../hooks/useInvoices'; // <-- Đổi dòng này
-import { useAllCustomers } from '../hooks/useCustomers';
-import { useAllCashFlow } from '../hooks/useCashFlow'; // <-- Đổi dòng này
+// Import Chart.js (Thư viện biểu đồ)
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, 
+  BarElement, ArcElement, Title, Tooltip, Legend
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
 
-// Chart.js global
-declare const Chart: any;
-
-const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; color: string; onClick?: () => void; }> = ({ title, value, icon, color, onClick }) => {
-    const Tag = onClick ? 'button' : 'div';
-    return (
-        <Tag 
-          onClick={onClick}
-          className={`bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between text-left w-full ${onClick ? 'cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-300' : ''}`}
-        >
-            <div>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2">{value}</p>
-            </div>
-            <div className={`p-4 rounded-full ${color} text-white shadow-sm`}>
-                {icon}
-            </div>
-        </Tag>
-    );
-};
+// Đăng ký các thành phần biểu đồ
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend);
 
 const DashboardPage: React.FC = () => {
-    const { setCurrentPage, isSidebarOpen, setIsOpen, currentUser } = useAppContext();
+    const { isSidebarOpen, setIsOpen, currentUser } = useAppContext();
+    const navigate = useNavigate();
+    const [loading, setLoading] = useState(true);
     
-    // --- SỬ DỤNG HOOK LẤY TOÀN BỘ DỮ LIỆU ---
-    // (Không truyền tham số page=1 nữa)
-    const { data: productsData } = useAllProducts(); 
-    const { data: invoicesData } = useAllInvoices();
-    const { data: customersData } = useAllCustomers();
-    // const { data: cashFlowData } = useAllCashFlow(); // Nếu cần dùng
+    // State lưu dữ liệu
+    const [stats, setStats] = useState<any>({});
+    const [revenueData, setRevenueData] = useState<any[]>([]);
+    const [topProducts, setTopProducts] = useState<any[]>([]);
+    const [orderStatus, setOrderStatus] = useState<any[]>([]);
 
-    // Chuẩn hóa dữ liệu
-    const products = Array.isArray(productsData) ? productsData : (productsData?.data || []);
-    const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData?.data || []);
-    const customers = Array.isArray(customersData) ? customersData : (customersData?.data || []);
-
-    const [drillDownData, setDrillDownData] = useState<{ title: string; invoices: Invoice[] } | null>(null);
-    const chartRef = useRef<HTMLCanvasElement>(null);
-    const chartInstance = useRef<any>(null);
-
-    // --- Tính toán thống kê ---
-    const stats = useMemo(() => {
-        // Tính tổng thực thu từ 1000 hóa đơn gần nhất
-        const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.paidAmount || 0), 0);
-        const totalOrders = invoices.length;
-        const totalCustomers = customers.length;
-        const totalProductsInStock = products.reduce((sum: number, p: any) => sum + (p.stock || 0), 0);
-
-        return { totalRevenue, totalOrders, totalCustomers, totalProductsInStock };
-    }, [invoices, customers, products]);
-
-    // --- Biểu đồ ---
+    // Gọi API khi vào trang
     useEffect(() => {
-        if (!chartRef.current) return;
-
-        const last7Days = [...Array(7)].map((_, i) => {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            return d.toISOString().split('T')[0];
-        }).reverse();
-
-        const revenueData = last7Days.map(date => {
-            return invoices
-                .filter((inv: any) => inv.issueDate === date)
-                .reduce((sum: number, inv: any) => sum + (inv.paidAmount || 0), 0);
-        });
-
-        if (chartInstance.current) {
-            chartInstance.current.destroy();
-        }
-
-        const ctx = chartRef.current.getContext('2d');
-        if (ctx && typeof Chart !== 'undefined') {
-            chartInstance.current = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: last7Days.map(d => d.split('-').slice(1).join('/')),
-                    datasets: [{
-                        label: 'Doanh thu (VNĐ)',
-                        data: revenueData,
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        pointBackgroundColor: '#fff',
-                        pointBorderColor: '#10b981',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                            padding: 12,
-                            titleFont: { size: 13 },
-                            bodyFont: { size: 14, weight: 'bold' },
-                            callbacks: {
-                                label: (context: any) => {
-                                    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(context.raw);
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
-                            ticks: { font: { size: 11 } }
-                        },
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: { size: 11 } }
-                        }
-                    }
-                }
-            });
-        }
-        
-        return () => {
-            if (chartInstance.current) {
-                chartInstance.current.destroy();
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                // Gọi song song 4 API để tiết kiệm thời gian
+                const [resStats, resRevenue, resProducts, resStatus] = await Promise.all([
+                    api('/api/dashboard/stats'),
+                    api('/api/dashboard/chart-revenue'),
+                    api('/api/dashboard/chart-products'),
+                    api('/api/dashboard/chart-status')
+                ]);
+                
+                setStats(resStats || {});
+                setRevenueData(resRevenue || []);
+                setTopProducts(resProducts || []);
+                setOrderStatus(resStatus || []);
+            } catch (error) {
+                console.error("Lỗi tải dashboard:", error);
+            } finally {
+                setLoading(false);
             }
         };
-    }, [invoices]);
+        fetchData();
+    }, []);
+
+    // --- CẤU HÌNH DỮ LIỆU BIỂU ĐỒ ---
+    
+    // 1. Biểu đồ Đường: Doanh thu 7 ngày
+    const lineChartData = {
+        labels: revenueData.map(d => d._id),
+        datasets: [{
+            label: 'Doanh thu (VNĐ)',
+            data: revenueData.map(d => d.total),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    };
+
+    // 2. Biểu đồ Cột Ngang: Top 5 Sản phẩm
+    const barChartData = {
+        labels: topProducts.map(p => p._id),
+        datasets: [{
+            label: 'Số lượng bán',
+            data: topProducts.map(p => p.qty),
+            backgroundColor: 'rgba(59, 130, 246, 0.8)',
+            borderRadius: 4,
+            barThickness: 20
+        }]
+    };
+
+    // 3. Biểu đồ Tròn: Trạng thái đơn hàng
+    const doughnutData = {
+        labels: orderStatus.map(s => s._id),
+        datasets: [{
+            data: orderStatus.map(s => s.count),
+            backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'],
+            borderWidth: 0
+        }]
+    };
+
+    const formatVND = (num: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num || 0);
+
+    if (loading) return <div className="h-screen flex justify-center items-center"><FiLoader className="animate-spin text-3xl text-primary-600"/></div>;
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* Header Mobile */}
-            <div className="lg:hidden flex justify-between items-center mb-6">
-                <button onClick={() => setIsOpen(!isSidebarOpen)} className="p-2 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                </button>
-                <div className="font-bold text-lg text-slate-800 dark:text-white">Dashboard</div>
+        <div className="space-y-6 animate-fade-in pb-10">
+            {/* Header */}
+            <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <div className="lg:hidden"><button onClick={() => setIsOpen(!isSidebarOpen)}><FiActivity/></button></div>
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Tổng quan kinh doanh 🚀</h2>
+                    <p className="text-slate-500 text-sm">Chào {currentUser?.name || 'bạn'}, chúc ngày mới tốt lành!</p>
+                </div>
                 <UserDropdown />
             </div>
 
-            {/* Header Desktop */}
-            <div className="hidden lg:flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                <div>
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Xin chào, {currentUser?.email?.split('@')[0]}! 👋</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Đây là tổng quan tình hình kinh doanh hôm nay.</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="relative">
-                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Tìm nhanh..." 
-                            className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all w-64"
-                        />
-                    </div>
-                    <button className="relative p-2 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                        <FiBell className="w-5 h-5" />
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-800"></span>
-                    </button>
-                </div>
-            </div>
-            
-            {/* Stats Grid */}
+            {/* 4 THẺ SỐ LIỆU TỔNG QUAN */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 
-                    title="Doanh thu thực thu" 
-                    value={`${stats.totalRevenue.toLocaleString('vi-VN')} đ`}
-                    icon={<FiDollarSign className="w-6 h-6" />}
-                    color="bg-green-500"
-                    onClick={() => {
-                        const paidInvoices = invoices.filter((inv: any) => inv.paidAmount > 0);
-                        setDrillDownData({ title: 'Hóa đơn có doanh thu', invoices: paidInvoices });
-                    }}
+                    title="Doanh thu hôm nay" value={formatVND(stats.revenueToday)} 
+                    icon={<FiDollarSign className="w-6 h-6"/>} color="bg-green-500" 
+                    onClick={() => navigate('/invoices')} 
                 />
                 <StatCard 
-                    title="Đơn hàng" 
-                    value={stats.totalOrders.toString()}
-                    icon={<FiShoppingCart className="w-6 h-6" />}
-                    color="bg-blue-500"
-                    onClick={() => setCurrentPage('Invoices' as PageKey)}
+                    title="Đơn hàng hôm nay" value={stats.ordersToday} 
+                    icon={<FiShoppingCart className="w-6 h-6"/>} color="bg-blue-500" 
+                    onClick={() => navigate('/invoices')} 
                 />
                 <StatCard 
-                    title="Khách hàng" 
-                    value={stats.totalCustomers.toString()}
-                    icon={<FiUsers className="w-6 h-6" />}
-                    color="bg-purple-500"
-                    onClick={() => setCurrentPage('Customers' as PageKey)}
+                    title="Dòng tiền (Tháng)" value={formatVND(stats.incomeMonth)} 
+                    sub={`Chi: ${formatVND(stats.expenseMonth)}`}
+                    icon={<FiTrendingUp className="w-6 h-6"/>} color="bg-purple-500" 
+                    onClick={() => navigate('/cash-flow')} 
                 />
                 <StatCard 
-                    title="Sản phẩm tồn kho" 
-                    value={stats.totalProductsInStock.toLocaleString('vi-VN')}
-                    icon={<FiArchive className="w-6 h-6" />}
-                    color="bg-amber-500"
-                    onClick={() => setCurrentPage('Products' as PageKey)}
+                    title="Cảnh báo tồn kho" value={stats.lowStockCount} 
+                    icon={<FiArchive className="w-6 h-6"/>} 
+                    color={stats.lowStockCount > 0 ? "bg-red-500" : "bg-emerald-500"} 
+                    onClick={() => navigate('/products')} 
                 />
             </div>
-            
-            {/* Charts Section */}
+
+            {/* KHU VỰC BIỂU ĐỒ */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Revenue Chart */}
-                <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex justify-between items-center mb-6">
-                        <h4 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                            <FiDollarSign className="text-primary-500" />
-                            Biểu đồ doanh thu (7 ngày)
-                        </h4>
-                    </div>
-                    <div className="h-80 relative">
-                        <canvas ref={chartRef}></canvas>
+                {/* 1. Biểu đồ doanh thu (Chiếm 2 cột) */}
+                <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700 dark:text-white flex items-center gap-2">
+                        <FiTrendingUp/> Xu hướng doanh thu (7 ngày)
+                    </h3>
+                    <div className="h-72">
+                        {revenueData.length > 0 ? (
+                            <Line data={lineChartData} options={{ maintainAspectRatio: false, responsive: true }} />
+                        ) : (
+                            <EmptyChart msg="Chưa có doanh thu tuần này" />
+                        )}
                     </div>
                 </div>
 
-                {/* Recent Activities / Low Stock */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
-                    <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                        <FiAlertCircle className="text-red-500" />
-                        Cảnh báo tồn kho
-                    </h4>
-                    <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-                        {products.filter((p: any) => p.stock <= 10).length > 0 ? (
-                            products
-                                .filter((p: any) => p.stock <= 10)
-                                .slice(0, 5)
-                                .map((p: any) => (
-                                    <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/50">
-                                        <div>
-                                            <p className="font-medium text-slate-800 dark:text-slate-200 text-sm">{p.name}</p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">SKU: {p.sku}</p>
-                                        </div>
-                                        <span className="px-2 py-1 bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 text-xs font-bold rounded shadow-sm border border-red-100 dark:border-red-900">
-                                            {p.stock} {p.unit}
-                                        </span>
-                                    </div>
-                                ))
+                {/* 2. Biểu đồ trạng thái đơn (Chiếm 1 cột) */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700 dark:text-white flex items-center gap-2">
+                        <FiPieChart/> Trạng thái đơn hàng
+                    </h3>
+                    <div className="h-64 flex justify-center relative">
+                        {orderStatus.length > 0 ? (
+                            <Doughnut data={doughnutData} options={{ maintainAspectRatio: false }} />
                         ) : (
-                            <div className="text-center py-10 text-slate-500 dark:text-slate-400">
-                                <FiArchive className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                <p>Kho hàng ổn định</p>
-                            </div>
+                            <EmptyChart msg="Chưa có đơn hàng" />
                         )}
-                        {products.filter((p: any) => p.stock <= 10).length > 5 && (
-                             <button 
-                                onClick={() => setCurrentPage('Products' as PageKey)}
-                                className="w-full text-center text-xs text-primary-600 hover:text-primary-700 mt-2 font-medium"
-                             >
-                                Xem tất cả...
-                             </button>
+                    </div>
+                </div>
+
+                {/* 3. Biểu đồ Top sản phẩm (Chiếm full chiều rộng ở dưới) */}
+                <div className="lg:col-span-3 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700 dark:text-white flex items-center gap-2">
+                        <FiBarChart2/> Top 5 Sản phẩm bán chạy nhất
+                    </h3>
+                    <div className="h-64">
+                        {topProducts.length > 0 ? (
+                            <Bar 
+                                data={barChartData} 
+                                options={{ 
+                                    maintainAspectRatio: false, 
+                                    indexAxis: 'y', // Biểu đồ ngang
+                                    plugins: { legend: { display: false } } 
+                                }} 
+                            />
+                        ) : (
+                            <EmptyChart msg="Chưa bán được sản phẩm nào" />
                         )}
                     </div>
                 </div>
             </div>
-            
-            <DrillDownModal data={drillDownData} onClose={() => setDrillDownData(null)} />
         </div>
     );
 };
+
+// Component con hỗ trợ hiển thị
+const StatCard: React.FC<any> = ({ title, value, sub, icon, color, onClick }) => (
+    <div onClick={onClick} className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-all flex justify-between items-center group">
+        <div>
+            <p className="text-sm text-slate-500">{title}</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1 group-hover:text-primary-600 transition-colors">{value}</p>
+            {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+        </div>
+        <div className={`p-4 rounded-full ${color} text-white shadow-lg shadow-${color}/30 transform group-hover:scale-110 transition-transform`}>{icon}</div>
+    </div>
+);
+
+const EmptyChart = ({ msg }: { msg: string }) => (
+    <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-lg">
+        <FiActivity className="w-10 h-10 mb-2 opacity-20"/>
+        <p className="text-sm">{msg}</p>
+    </div>
+);
 
 export default DashboardPage;
