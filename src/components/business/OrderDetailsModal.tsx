@@ -1,174 +1,197 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { FiX, FiPrinter, FiCheckCircle, FiTruck, FiXCircle, FiArrowRight, FiFileText } from 'react-icons/fi';
 import { api } from '../../utils/api';
-import { FiX, FiPrinter, FiPackage, FiUser, FiCalendar, FiFileText, FiMapPin, FiPhone } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import PrintOrderModal from './PrintOrderModal';
 
 interface Props {
-    orderId: string | null;
+    order: any;
     onClose: () => void;
-    onPrint: (id: string) => void;
+    onUpdate: () => void;
 }
 
-const OrderDetailsModal: React.FC<Props> = ({ orderId, onClose, onPrint }) => {
-    // 1. Lấy thông tin ĐƠN HÀNG
-    const { data: order, isLoading } = useQuery({
-        queryKey: ['order', orderId],
-        queryFn: async () => {
-            if (!orderId) return null;
-            const res: any = await api(`/api/orders/${orderId}`);
-            return res.data ? res.data : res;
-        },
-        enabled: !!orderId,
-    });
+const OrderDetailsModal: React.FC<Props> = ({ order, onClose, onUpdate }) => {
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [showPrint, setShowPrint] = useState(false);
 
-    // 2. [MỚI] Lấy thông tin chi tiết KHÁCH HÀNG (SĐT, Địa chỉ)
-    const { data: customer } = useQuery({
-        queryKey: ['customer', order?.customerId],
-        queryFn: async () => {
-            if (!order?.customerId) return null;
-            try {
-                const res: any = await api(`/api/customers/${order.customerId}`);
-                return res.data ? res.data : res;
-            } catch (e) { return null; }
-        },
-        enabled: !!order?.customerId, // Chỉ chạy khi đã lấy được đơn hàng
-    });
+    // 1. Chức năng: Chuyển Đơn hàng -> Hóa đơn (Hoàn tất bán hàng)
+    const handleConvertToInvoice = async () => {
+        if (!window.confirm('Xác nhận: Khách đã nhận hàng/thanh toán? Hệ thống sẽ tạo Hóa đơn và trừ kho chính thức.')) return;
+        
+        setIsProcessing(true);
+        try {
+            // Bước 1: Gọi API tạo hóa đơn từ dữ liệu đơn hàng
+            await api('/api/invoices', {
+                method: 'POST',
+                body: JSON.stringify({
+                    orderId: order._id,
+                    customerId: order.customerId,
+                    items: order.items, // Backend sẽ tự lấy lại giá vốn mới nhất để an toàn
+                    discountAmount: 0,
+                    paymentAmount: order.totalAmount, // Giả định khách trả hết (hoặc bạn có thể làm popup nhập tiền)
+                    paymentMethod: 'Tiền mặt',
+                    deliveryInfo: order.delivery,
+                    note: `Chuyển từ đơn hàng #${order.orderNumber}`
+                })
+            });
 
-    if (!orderId) return null;
+            // Bước 2: Cập nhật trạng thái Đơn hàng -> Hoàn thành
+            await api(`/api/orders/${order._id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: 'Hoàn thành' })
+            });
 
-    // Logic hiển thị trạng thái
-    const renderStatus = (status: string) => {
-        if (status === 'Mới') return <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold border border-blue-200 shadow-sm">Mới tạo</span>;
-        if (status === 'Hoàn thành') return <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 shadow-sm">Đã xuất kho</span>;
-        if (status === 'Hủy') return <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold border border-red-200 shadow-sm">Đã hủy</span>;
-        return <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">{status}</span>;
+            toast.success('Đã xuất hàng và tạo hóa đơn thành công!');
+            onUpdate();
+        } catch (err: any) {
+            toast.error(err.message || 'Lỗi khi chuyển đổi');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
-    // Ưu tiên lấy thông tin từ hồ sơ khách hàng
-    const displayPhone = customer?.phone || '...';
-    const displayAddress = customer?.address || 'Tại quầy';
+    // 2. Chức năng: Cập nhật trạng thái thủ công (Ví dụ: Đang giao)
+    const updateStatus = async (status: string) => {
+        try {
+            await api(`/api/orders/${order._id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+            toast.success(`Đã cập nhật: ${status}`);
+            onUpdate();
+        } catch (error) { toast.error('Lỗi cập nhật'); }
+    };
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 
                 {/* Header */}
-                <div className="flex justify-between items-center p-5 border-b bg-white">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <div>
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-xl font-bold text-slate-800">
-                                {isLoading ? 'Đang tải...' : `Đơn đặt hàng ${order?.orderNumber}`}
-                            </h3>
-                            {!isLoading && order && renderStatus(order.status)}
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
-                            <FiCalendar size={14}/> 
-                            Ngày đặt: {order ? new Date(order.createdAt).toLocaleDateString('vi-VN') : '...'}
-                        </p>
+                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            Đơn hàng #{order.orderNumber}
+                            <span className={`px-3 py-1 rounded-full text-xs ${
+                                order.status === 'Mới' ? 'bg-blue-100 text-blue-700' :
+                                order.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
+                                order.status === 'Hủy' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                            }`}>{order.status}</span>
+                        </h2>
+                        <p className="text-slate-500 text-sm mt-1">Ngày đặt: {new Date(order.createdAt).toLocaleString('vi-VN')}</p>
                     </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => onPrint(orderId)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors" title="In phiếu giao hàng">
-                            <FiPrinter size={18}/> In phiếu
-                        </button>
-                        <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors"><FiX size={24}/></button>
-                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full"><FiX size={24} /></button>
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
-                    {isLoading || !order ? (
-                        <div className="flex justify-center items-center py-12">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="p-6 overflow-y-auto flex-1">
+                    {/* Thông tin khách & Giao hàng */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><FiFileText/> Thông tin khách hàng</h3>
+                            <p><span className="text-slate-500">Tên:</span> <b>{order.customerName}</b></p>
+                            {order.delivery?.phone && <p><span className="text-slate-500">SĐT:</span> {order.delivery.phone}</p>}
                         </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Thông tin 2 cột */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Cột Trái: Khách hàng */}
-                                <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-50">
-                                        <FiUser className="text-blue-600" size={20} />
-                                        <h4 className="font-bold text-slate-800">Thông tin Khách hàng</h4>
-                                    </div>
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500">Tên khách:</span>
-                                            <span className="font-medium text-slate-900">{order.customerName}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 flex items-center gap-1"><FiPhone size={14}/> Điện thoại:</span>
-                                            <span className="font-medium text-slate-900">{displayPhone}</span>
-                                        </div>
-                                        <div className="flex justify-between items-start">
-                                            <span className="text-slate-500 flex items-center gap-1 shrink-0"><FiMapPin size={14}/> Địa chỉ:</span>
-                                            <span className="font-medium text-slate-900 text-right truncate max-w-[180px]" title={displayAddress}>
-                                                {displayAddress}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Cột Phải: Thông tin đơn */}
-                                <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-50">
-                                        <FiFileText className="text-purple-600" size={20} />
-                                        <h4 className="font-bold text-slate-800">Thông tin Đơn hàng</h4>
-                                    </div>
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500">Người tạo:</span>
-                                            <span className="font-medium text-slate-900">Admin</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500">Ghi chú:</span>
-                                            <span className="font-medium text-slate-700 italic">{order.note || 'Không có ghi chú'}</span>
-                                        </div>
-                                        <div className="flex justify-between mt-2 pt-2 border-t border-dashed border-slate-100">
-                                            <span className="text-slate-500 font-bold">Tổng tiền:</span>
-                                            <span className="font-bold text-blue-600 text-lg">{order.totalAmount?.toLocaleString()} đ</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Bảng sản phẩm */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center gap-2 font-bold text-slate-700">
-                                    <FiPackage /> Danh sách sản phẩm
-                                </div>
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-white text-slate-500 font-bold uppercase text-xs border-b border-slate-100">
-                                        <tr>
-                                            <th className="px-5 py-3 w-10 text-center">#</th>
-                                            <th className="px-5 py-3">Tên sản phẩm</th>
-                                            <th className="px-5 py-3 text-center w-20">ĐVT</th>
-                                            <th className="px-5 py-3 text-center w-20">SL</th>
-                                            <th className="px-5 py-3 text-right">Đơn giá</th>
-                                            <th className="px-5 py-3 text-right">Thành tiền</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {order.items?.map((item: any, idx: number) => (
-                                            <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                                                <td className="px-5 py-3 text-center text-slate-400">{idx + 1}</td>
-                                                <td className="px-5 py-3 font-medium text-slate-800">{item.name}</td>
-                                                <td className="px-5 py-3 text-center text-slate-500">{item.unit || 'Cái'}</td>
-                                                <td className="px-5 py-3 text-center">
-                                                    <span className="bg-slate-100 px-2 py-1 rounded font-bold text-slate-700">{item.quantity}</span>
-                                                </td>
-                                                <td className="px-5 py-3 text-right text-slate-600">{item.price?.toLocaleString()}</td>
-                                                <td className="px-5 py-3 text-right font-bold text-slate-800">
-                                                    {((item.price || 0) * (item.quantity || 0)).toLocaleString()}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><FiTruck/> Giao nhận</h3>
+                            <p><span className="text-slate-500">Hình thức:</span> {order.isDelivery ? 'Giao tận nơi' : 'Nhận tại quầy'}</p>
+                            {order.isDelivery && <p className="truncate"><span className="text-slate-500">Địa chỉ:</span> {order.delivery?.address}</p>}
+                            {order.note && <p className="text-yellow-600 mt-1 italic">Ghi chú: {order.note}</p>}
                         </div>
+                    </div>
+
+                    {/* Bảng sản phẩm */}
+                    <table className="w-full text-sm text-left mb-6">
+                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
+                            <tr>
+                                <th className="px-4 py-3 rounded-l-lg">Sản phẩm</th>
+                                <th className="px-4 py-3 text-center">SL</th>
+                                <th className="px-4 py-3 text-right">Đơn giá</th>
+                                <th className="px-4 py-3 text-right rounded-r-lg">Thành tiền</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {order.items.map((item: any, idx: number) => (
+                                <tr key={idx}>
+                                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                                    <td className="px-4 py-3 text-center">{item.quantity}</td>
+                                    <td className="px-4 py-3 text-right">{item.price.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right font-bold">{(item.price * item.quantity).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot className="border-t border-slate-200">
+                            <tr>
+                                <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-600">Tổng tiền hàng</td>
+                                <td className="px-4 py-3 text-right font-bold">{(order.totalAmount - (order.delivery?.shipFee || 0)).toLocaleString()}</td>
+                            </tr>
+                            {order.isDelivery && (
+                                <tr>
+                                    <td colSpan={3} className="px-4 py-1 text-right text-slate-500">Phí vận chuyển</td>
+                                    <td className="px-4 py-1 text-right">{order.delivery?.shipFee?.toLocaleString()}</td>
+                                </tr>
+                            )}
+                            <tr className="text-lg text-primary-600">
+                                <td colSpan={3} className="px-4 py-3 text-right font-bold">TỔNG CỘNG</td>
+                                <td className="px-4 py-3 text-right font-bold">{order.totalAmount.toLocaleString()} ₫</td>
+                            </tr>
+                            {order.depositAmount > 0 && (
+                                <tr className="text-green-600">
+                                    <td colSpan={3} className="px-4 py-1 text-right italic">Đã đặt cọc</td>
+                                    <td className="px-4 py-1 text-right italic">-{order.depositAmount.toLocaleString()}</td>
+                                </tr>
+                            )}
+                        </tfoot>
+                    </table>
+                </div>
+
+                {/* Footer Action */}
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-end">
+                    <button 
+                        onClick={() => setShowPrint(true)}
+                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                        <FiPrinter /> In Phiếu
+                    </button>
+
+                    {order.status === 'Mới' && (
+                        <>
+                            <button 
+                                onClick={() => updateStatus('Hủy')}
+                                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 flex items-center gap-2 font-medium"
+                            >
+                                <FiXCircle /> Hủy Đơn
+                            </button>
+                            <button 
+                                onClick={() => updateStatus('Đang xử lý')}
+                                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center gap-2 font-medium"
+                            >
+                                <FiArrowRight /> Duyệt Đơn
+                            </button>
+                        </>
+                    )}
+
+                    {order.status === 'Đang xử lý' && (
+                        <button 
+                            onClick={() => updateStatus('Đang giao')}
+                            className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 flex items-center gap-2 font-medium"
+                        >
+                            <FiTruck /> Giao Hàng
+                        </button>
+                    )}
+
+                    {/* NÚT QUAN TRỌNG NHẤT: CHUYỂN THÀNH HÓA ĐƠN */}
+                    {(order.status === 'Mới' || order.status === 'Đang xử lý' || order.status === 'Đang giao') && (
+                        <button 
+                            onClick={handleConvertToInvoice}
+                            disabled={isProcessing}
+                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 font-bold transition-all hover:-translate-y-0.5"
+                        >
+                            {isProcessing ? 'Đang xử lý...' : <><FiCheckCircle /> Xuất Hàng & Hoàn Tất</>}
+                        </button>
                     )}
                 </div>
             </div>
+
+            {showPrint && (
+                <PrintOrderModal order={order} onClose={() => setShowPrint(false)} />
+            )}
         </div>
     );
 };

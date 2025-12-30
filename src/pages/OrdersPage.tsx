@@ -1,286 +1,164 @@
 import React, { useState, useEffect } from 'react';
-import { FiX, FiSearch, FiTrash2, FiSave, FiTruck, FiMapPin, FiPhone, FiUser, FiPackage, FiCheckCircle, FiPlus } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiEye, FiTrash2, FiTruck, FiLoader, FiFilter } from 'react-icons/fi';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
+import Pagination from '../components/Pagination';
+import OrderFormModal from '../components/business/OrderFormModal';
+import OrderDetailsModal from '../components/business/OrderDetailsModal';
+import { useAppContext } from '../context/DataContext';
 
-interface Props {
-    onClose: () => void;
-    initialData?: any; 
-    onSuccess?: () => void; // Hàm reload dữ liệu trang cha
+// Định nghĩa kiểu dữ liệu đơn giản cho Order
+interface Order {
+    _id: string;
+    orderNumber: string;
+    customerName: string;
+    totalAmount: number;
+    depositAmount: number;
+    status: string;
+    createdAt: string;
+    isDelivery: boolean;
 }
 
-const OrderFormModal: React.FC<Props> = ({ onClose, initialData, onSuccess }) => {
-    // --- STATE ---
-    const [cart, setCart] = useState<any[]>([]);
-    const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-    const [paidAmount, setPaidAmount] = useState<string>('');
+const OrdersPage: React.FC = () => {
+    const { userPermissions } = useAppContext();
+    
+    // State quản lý dữ liệu và giao diện
+    const [orders, setOrders] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
     
-    const [products, setProducts] = useState<any[]>([]);
-    const [customers, setCustomers] = useState<any[]>([]);
-    const [isProcessing, setIsProcessing] = useState(false);
-    
-    // State Giao hàng
-    const [isDelivery, setIsDelivery] = useState(false);
-    const [deliveryInfo, setDeliveryInfo] = useState({
-        receiverName: '',
-        phone: '',
-        address: '',
-        shipFee: 0
-    });
+    // State mở Modal tạo mới
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
-    // 1. Tải dữ liệu (Có kiểm tra kỹ)
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                const [prodRes, custRes] = await Promise.all([
-                    api('/api/products?limit=100'),
-                    api('/api/customers?limit=100')
-                ]);
-
-                const prodData = (prodRes && prodRes.data) ? prodRes.data : (Array.isArray(prodRes) ? prodRes : []);
-                const custData = (custRes && custRes.data) ? custRes.data : (Array.isArray(custRes) ? custRes : []);
-
-                setProducts(prodData);
-                setCustomers(custData);
-            } catch (e) { 
-                console.error("Lỗi tải dữ liệu:", e);
-            }
-        };
-        loadData();
-    }, []);
-
-    // 2. Tự động điền thông tin giao hàng khi chọn khách
-    useEffect(() => {
-        if (selectedCustomer && isDelivery) {
-            setDeliveryInfo(prev => ({
-                ...prev,
-                receiverName: selectedCustomer.name || '',
-                phone: selectedCustomer.phone || ''
-            }));
-        }
-    }, [selectedCustomer, isDelivery]);
-
-    // 3. Xử lý Giỏ hàng
-    const addToCart = (product: any) => {
-        if (!product) return;
-        const proId = product._id || product.id;
-        if (!proId) return toast.error("Sản phẩm lỗi ID");
-
-        const exist = cart.find(i => i.productId === proId);
-        if (exist) {
-            setCart(cart.map(i => i.productId === proId ? { ...i, quantity: i.quantity + 1 } : i));
-        } else {
-            setCart([...cart, { 
-                productId: proId, 
-                name: product.name, 
-                price: Number(product.price) || 0, 
-                quantity: 1, 
-                stock: product.stock 
-            }]);
-        }
-    };
-
-    const updateQuantity = (productId: string, delta: number) => {
-        setCart(prev => prev.map(item => {
-            if (item.productId === productId) {
-                const newQty = Math.max(1, item.quantity + delta);
-                return { ...item, quantity: newQty };
-            }
-            return item;
-        }));
-    };
-
-    const removeFromCart = (productId: string) => {
-        setCart(prev => prev.filter(i => i.productId !== productId));
-    };
-
-    // Tính toán tiền
-    const totalAmount = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
-    const shipFee = isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
-    const finalTotal = totalAmount + shipFee;
-
-    // 4. Xử lý Lưu Đơn -> GỌI API ORDERS
-    const handleSubmit = async () => {
-        if (cart.length === 0) return toast.error('Giỏ hàng trống!');
-        
-        setIsProcessing(true);
-        const loadingId = toast.loading('Đang xử lý...');
-        
+    // Hàm tải danh sách đơn hàng
+    const fetchOrders = async () => {
+        setLoading(true);
         try {
-            const payload = {
-                customerId: selectedCustomer?._id || selectedCustomer?.id,
-                items: cart,
-                totalAmount: totalAmount, 
-                paymentAmount: Number(paidAmount) || 0,
-                // Gửi thông tin giao hàng
-                deliveryInfo: isDelivery ? {
-                    isDelivery: true,
-                    ...deliveryInfo
-                } : null
-            };
+            const query = new URLSearchParams({
+                page: page.toString(), limit: '10', search: searchTerm, status: statusFilter
+            });
+            const res = await api(`/api/orders?${query.toString()}`);
+            setOrders(res.data || []);
+            setTotalPages(res.totalPages || 1);
+        } catch (err: any) { toast.error(err.message); } 
+        finally { setLoading(false); }
+    };
 
-            // [QUAN TRỌNG] Đổi thành /api/orders để nó hiện trong trang Đơn hàng
-            await api('/api/orders', { method: 'POST', body: JSON.stringify(payload) });
-            
-            toast.success('Tạo đơn hàng thành công!', { id: loadingId });
-            
-            // Xử lý reload mượt mà không cần F5
-            if (onSuccess) {
-                onSuccess();
-            } else {
-                // Chỉ reload nếu không có hàm onSuccess (fallback)
-                window.location.reload(); 
-            }
-            onClose();
+    // Tự động tải lại khi filter thay đổi
+    useEffect(() => {
+        const timer = setTimeout(fetchOrders, 300);
+        return () => clearTimeout(timer);
+    }, [page, searchTerm, statusFilter]);
 
-        } catch (error: any) {
-            console.error(error);
-            toast.error(error.message || 'Lỗi tạo đơn', { id: loadingId });
-            setIsProcessing(false);
+    // Hàm lấy màu sắc cho trạng thái
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'Mới': return 'bg-blue-100 text-blue-700';
+            case 'Đang xử lý': return 'bg-yellow-100 text-yellow-700';
+            case 'Hoàn thành': return 'bg-green-100 text-green-700';
+            case 'Hủy': return 'bg-red-100 text-red-700';
+            default: return 'bg-slate-100 text-slate-700';
+        }
+    };
+
+    // Hàm hủy đơn (Soft delete)
+    const handleCancelOrder = async (id: string) => {
+        if (!window.confirm('Bạn có chắc muốn hủy đơn hàng này?')) return;
+        try {
+            await api(`/api/orders/${id}`, { 
+                method: 'PUT', 
+                body: JSON.stringify({ status: 'Hủy' }) 
+            });
+            toast.success('Đã hủy đơn hàng');
+            fetchOrders(); // Tải lại danh sách
+        } catch (err: any) {
+            toast.error(err.message || 'Lỗi khi hủy đơn');
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl w-full max-w-7xl h-[90vh] flex overflow-hidden shadow-2xl">
-                
-                {/* --- CỘT TRÁI: DANH SÁCH SẢN PHẨM --- */}
-                <div className="flex-[1.8] flex flex-col border-r border-slate-200 bg-slate-50/50">
-                    <div className="p-5 bg-white border-b border-slate-100 shadow-sm flex gap-4">
-                        <div className="relative flex-1">
-                            <FiSearch className="absolute left-4 top-3.5 text-slate-400 text-lg"/>
-                            <input 
-                                type="text" 
-                                placeholder="Tìm kiếm sản phẩm..." 
-                                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-                                onChange={e => setSearchTerm(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 content-start">
-                            {Array.isArray(products) && products.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase())).map((product, index) => {
-                                const safeKey = product._id || product.id || index;
-                                return (
-                                    <div key={safeKey} onClick={() => addToCart(product)} 
-                                        className="group bg-white p-4 rounded-2xl border border-slate-100 hover:border-primary-500 cursor-pointer shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all flex flex-col h-full relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-bl-lg">Kho: {product.stock}</div>
-                                        <div className="mb-3 p-3 bg-primary-50 rounded-xl w-12 h-12 flex items-center justify-center group-hover:bg-primary-600 transition-colors">
-                                            <FiPackage className="text-primary-600 text-xl group-hover:text-white transition-colors"/>
-                                        </div>
-                                        <div className="font-bold text-slate-700 line-clamp-2 text-sm mb-auto">{product.name}</div>
-                                        <div className="mt-3 pt-3 border-t border-slate-50 flex justify-between items-end">
-                                            <span className="text-primary-600 font-extrabold text-base">{Number(product.price).toLocaleString()}</span>
-                                            <FiPlus className="text-slate-300 group-hover:text-primary-500"/>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- CỘT PHẢI: GIỎ HÀNG & THANH TOÁN --- */}
-                <div className="w-[450px] flex flex-col bg-white shadow-[-5px_0_20px_rgba(0,0,0,0.05)] z-10 relative">
-                    <div className="p-5 border-b border-primary-100 bg-gradient-to-r from-primary-600 to-primary-700 text-white flex justify-between items-center shadow-md">
-                        <h3 className="font-bold text-lg flex items-center gap-2"><FiCheckCircle/> Đơn hàng mới</h3>
-                        <button onClick={onClose} className="hover:bg-white/20 p-2 rounded-full transition-colors"><FiX size={20}/></button>
-                    </div>
-
-                    {/* 1. Chọn khách */}
-                    <div className="p-5 border-b border-slate-100 bg-white">
-                        <div className="relative">
-                            <FiUser className="absolute left-3.5 top-3.5 text-primary-500"/>
-                            <select 
-                                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none appearance-none bg-slate-50 cursor-pointer"
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    const found = customers.find(c => (c._id || c.id) === val);
-                                    setSelectedCustomer(found);
-                                }}
-                            >
-                                <option value="">-- Khách lẻ (Tại quầy) --</option>
-                                {Array.isArray(customers) && customers.map((c, index) => {
-                                    const cId = c._id || c.id;
-                                    return <option key={cId || index} value={cId}>{c.name} - {c.phone}</option>;
-                                })}
-                            </select>
-                            <div className="absolute right-3 top-3.5 text-slate-400 pointer-events-none text-xs">▼</div>
-                        </div>
-                    </div>
-
-                    {/* 2. List hàng */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-slate-50/50">
-                        {cart.map((item, idx) => (
-                            <div key={item.productId || idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex-1 pr-2">
-                                    <div className="font-bold text-slate-700 text-sm line-clamp-1">{item.name}</div>
-                                    <div className="text-xs text-primary-600 font-medium mt-0.5">{item.price.toLocaleString()} ₫</div>
-                                </div>
-                                <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1">
-                                    <button onClick={() => updateQuantity(item.productId, -1)} className="w-6 h-6 flex items-center justify-center font-bold text-slate-500 hover:text-primary-600">-</button>
-                                    <span className="text-sm font-bold text-slate-700 w-4 text-center">{item.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.productId, 1)} className="w-6 h-6 flex items-center justify-center font-bold text-slate-500 hover:text-primary-600">+</button>
-                                </div>
-                                <div className="font-bold text-slate-800 text-sm w-20 text-right">{(item.price * item.quantity).toLocaleString()}</div>
-                                <button onClick={() => removeFromCart(item.productId)} className="text-slate-300 hover:text-red-500 p-1.5"><FiTrash2 size={16}/></button>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* 3. Giao hàng */}
-                    <div className="p-4 bg-white border-t border-slate-100 z-20">
-                        <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
-                            <div className={`relative w-11 h-6 rounded-full p-1 transition-colors ${isDelivery ? 'bg-primary-600' : 'bg-slate-200'}`} onClick={() => setIsDelivery(!isDelivery)}>
-                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${isDelivery ? 'translate-x-5' : ''}`}/>
-                            </div>
-                            <span className={`font-bold text-sm flex items-center gap-2 ${isDelivery ? 'text-primary-700' : 'text-slate-500'}`}><FiTruck/> Giao hàng tận nơi</span>
-                        </label>
-
-                        {isDelivery && (
-                            <div className="space-y-3 p-3 bg-primary-50/50 rounded-xl border border-primary-100 animate-fade-in mb-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <input type="text" placeholder="Tên người nhận" className="w-full p-2 text-xs border border-primary-200 rounded-lg focus:ring-1 focus:ring-primary-500 outline-none"
-                                        value={deliveryInfo.receiverName} onChange={e => setDeliveryInfo({...deliveryInfo, receiverName: e.target.value})}/>
-                                    <input type="text" placeholder="SĐT người nhận" className="w-full p-2 text-xs border border-primary-200 rounded-lg focus:ring-1 focus:ring-primary-500 outline-none"
-                                        value={deliveryInfo.phone} onChange={e => setDeliveryInfo({...deliveryInfo, phone: e.target.value})}/>
-                                </div>
-                                <input type="text" placeholder="Địa chỉ giao hàng (Bắt buộc)" className="w-full p-2 text-xs border border-primary-200 rounded-lg focus:ring-1 focus:ring-primary-500 outline-none"
-                                    value={deliveryInfo.address} onChange={e => setDeliveryInfo({...deliveryInfo, address: e.target.value})}/>
-                                <div className="flex justify-between items-center px-2">
-                                    <span className="text-xs font-bold text-primary-700">Phí vận chuyển:</span>
-                                    <input type="number" className="w-24 text-right p-1.5 border border-primary-200 rounded-lg text-sm font-bold text-primary-700 outline-none"
-                                        value={deliveryInfo.shipFee} onChange={e => setDeliveryInfo({...deliveryInfo, shipFee: Number(e.target.value)})}/>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Tổng kết */}
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm text-slate-600"><span>Tiền hàng:</span><span className="font-medium">{totalAmount.toLocaleString()}</span></div>
-                            {isDelivery && <div className="flex justify-between text-sm text-primary-600"><span>+ Phí Ship:</span><span className="font-bold">{shipFee.toLocaleString()}</span></div>}
-                            <div className="flex justify-between text-xl font-extrabold text-slate-800 pt-2 border-t border-dashed border-slate-300">
-                                <span>Tổng cộng:</span><span className="text-primary-700">{finalTotal.toLocaleString()} ₫</span>
-                            </div>
-                        </div>
-                        
-                        <div className="mt-4 bg-slate-100 p-1.5 rounded-xl flex items-center justify-between pr-2 border border-slate-200">
-                            <span className="text-xs font-bold text-slate-500 pl-3 uppercase">Khách trả:</span>
-                            <input type="number" className="w-32 bg-white p-2 rounded-lg font-bold text-right text-slate-800 outline-none"
-                                placeholder="0" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
-                        </div>
-                        
-                        <button onClick={handleSubmit} disabled={isProcessing} className="w-full mt-4 bg-gradient-to-r from-primary-600 to-primary-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2">
-                            {isProcessing ? <FiPackage className="animate-spin"/> : <FiSave/>} {isDelivery ? 'Lưu & Giao Hàng' : 'Tạo Đơn Hàng'}
-                        </button>
-                    </div>
-                </div>
+        <div className="p-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-slate-800">Quản Lý Đơn Đặt Hàng</h1>
+                <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all">
+                    <FiPlus size={20}/> Tạo Đơn Mới
+                </button>
             </div>
+
+            {/* Filters ... (Giữ nguyên phần filter) */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex gap-4 mb-6">
+                <div className="relative flex-1">
+                    <FiSearch className="absolute left-3 top-3 text-slate-400"/>
+                    <input type="text" placeholder="Tìm kiếm..." className="w-full pl-10 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                </div>
+                <select className="border rounded-lg px-4" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                    <option value="all">Tất cả</option>
+                    <option value="Mới">Mới</option>
+                    <option value="Đang xử lý">Đang xử lý</option>
+                    <option value="Hoàn thành">Hoàn thành</option>
+                </select>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
+                        <tr>
+                            <th className="px-6 py-4">Mã Đơn</th>
+                            <th className="px-6 py-4">Khách Hàng</th>
+                            <th className="px-6 py-4">Ngày Tạo</th>
+                            <th className="px-6 py-4 text-right">Tổng Tiền</th>
+                            <th className="px-6 py-4 text-center">Trạng Thái</th>
+                            <th className="px-6 py-4 text-right">Thao Tác</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {loading ? <tr><td colSpan={6} className="text-center py-8"><FiLoader className="animate-spin inline"/></td></tr> :
+                        orders.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-slate-500">Chưa có đơn hàng</td></tr> :
+                        orders.map(order => (
+                            <tr key={order._id} className="hover:bg-slate-50">
+                                <td className="px-6 py-4 font-bold text-primary-600">#{order.orderNumber}</td>
+                                <td className="px-6 py-4">{order.customerName}</td>
+                                <td className="px-6 py-4">{new Date(order.createdAt).toLocaleDateString('vi-VN')}</td>
+                                <td className="px-6 py-4 text-right font-bold">{order.totalAmount.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-center"><span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>{order.status}</span></td>
+                                <td className="px-6 py-4 text-right">
+                                    {/* NÚT XEM CHI TIẾT */}
+                                    <button 
+                                        onClick={() => setSelectedOrder(order)}
+                                        className="p-2 text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors"
+                                        title="Xem chi tiết & Xử lý"
+                                    >
+                                        <FiEye size={18}/>
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+            </div>
+
+            {/* Modal Tạo Mới */}
+            {isCreateModalOpen && (
+                <OrderFormModal onClose={() => setIsCreateModalOpen(false)} onSuccess={() => { fetchOrders(); setIsCreateModalOpen(false); }} />
+            )}
+
+            {/* Modal Chi Tiết & Xử Lý (HIỂN THỊ KHI SELECTED ORDER CÓ DỮ LIỆU) */}
+            {selectedOrder && (
+                <OrderDetailsModal 
+                    order={selectedOrder} 
+                    onClose={() => setSelectedOrder(null)} 
+                    onUpdate={() => { fetchOrders(); setSelectedOrder(null); }} 
+                />
+            )}
         </div>
     );
 };
 
-export default OrderFormModal;
+export default OrdersPage;
