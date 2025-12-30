@@ -5,8 +5,8 @@ import {
 } from 'react-icons/fi';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
-import Pagination from '../components/Pagination';
-import OrderDetailsModal from '../components/business/OrderDetailsModal';
+import Pagination from '../components/common/Pagination';
+import OrderDetailsModal from '../components/OrderDetailsModal';
 
 const DeliveriesPage: React.FC = () => {
     // State quản lý dữ liệu

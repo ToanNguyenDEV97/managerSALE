@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { FiPlus, FiSearch, FiEye, FiTrash2, FiTruck, FiLoader, FiFilter } from 'react-icons/fi';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
-import Pagination from '../components/Pagination';
-import OrderFormModal from '../components/business/OrderFormModal';
-import OrderDetailsModal from '../components/business/OrderDetailsModal';
+import Pagination from '../components/common/Pagination';
+import OrderFormModal from '../components/features/sales/OrderFormModal';
+import OrderDetailsModal from '../components/OrderDetailsModal';
 import { useAppContext } from '../context/DataContext';
 
 // Định nghĩa kiểu dữ liệu đơn giản cho Order

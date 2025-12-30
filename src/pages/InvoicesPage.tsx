@@ -5,13 +5,13 @@ import {
 } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import { useInvoices, useDeleteInvoice, useReturnInvoice } from '../hooks/useInvoices';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
-import ReturnInvoiceModal from '../components/ReturnInvoiceModal';
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import ReturnInvoiceModal from '../components/features/sales/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
 
 import InvoiceDetailsModal from '../components/InvoiceDetailsModal'; 
-import PrintInvoiceModal from '../components/business/PrintInvoiceModal';
+import PrintInvoiceModal from '../components/PrintInvoiceModal';
 
 const InvoicesPage: React.FC = () => {
     const { setPayingInvoiceId } = useAppContext();

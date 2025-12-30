@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FiSettings } from 'react-icons/fi';
-import type { PageKey, ColumnVisibility } from '../types';
+import type { PageKey, ColumnVisibility } from '../../types';
 
 interface ColumnTogglerProps {
     pageKey: PageKey;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiSearch, FiTrash2, FiCheckCircle, FiLoader } from 'react-icons/fi';
-import { api } from '../../utils/api';
+import { api } from '../../../utils/api';
 import toast from 'react-hot-toast';
 
 interface Props {

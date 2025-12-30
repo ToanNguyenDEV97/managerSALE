@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { FiPlus, FiTrash2 } from 'react-icons/fi';
-import type { Order, OrderItem } from '../../types';
-import { useAppContext } from '../../context/DataContext';
+import type { Order, OrderItem } from '../types';
+import { useAppContext } from '../context/DataContext';
 
 const OrderForm: React.FC = () => {
     const { editingOrder, customers, products, handleSaveOrder, setEditingOrder } = useAppContext();

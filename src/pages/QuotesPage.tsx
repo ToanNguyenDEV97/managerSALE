@@ -10,12 +10,12 @@ import {
     FiCheckCircle 
 } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import { useQuotes, useDeleteQuote, useConvertToOrder } from '../hooks/useQuotes';
 
 // Import Modal Tạo/Sửa báo giá
-import QuoteModal from '../components/QuoteModal'; 
+import QuoteModal from '../components/features/sales/QuoteModal'; 
 
 const QuotesPage: React.FC = () => {
     // Lấy state toàn cục

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
 import type { User } from '../types';
 import { useAppContext } from '../context/DataContext';
-import ConfirmationModal from '../components/ConfirmationModal';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const UsersPage: React.FC = () => {
     const { users, setEditingUser, handleDeleteUser, currentUser } = useAppContext();

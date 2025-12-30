@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiLoader, FiSearch, FiList, FiClock } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 // --- IMPORTS CÁC MODAL ---
 import ProductModal from '../components/ProductModal';

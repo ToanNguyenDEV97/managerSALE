@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
 import { FiSave, FiSettings, FiImage } from 'react-icons/fi';
+import { useAppContext } from '../context/DataContext';
 
 const SettingsPage = () => {
+    const { refreshCompanyInfo } = useAppContext();
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         name: '', address: '', phone: '', email: '',
@@ -42,6 +44,10 @@ const SettingsPage = () => {
                 method: 'PUT',
                 body: JSON.stringify(formData)
             });
+            
+            // [3] CẬP NHẬT CONTEXT NGAY LẬP TỨC
+            await refreshCompanyInfo(); 
+
             toast.success('Đã lưu thông tin công ty thành công!');
         } catch (error: any) {
             toast.error(error.message);

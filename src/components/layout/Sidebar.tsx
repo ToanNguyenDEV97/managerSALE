@@ -7,7 +7,7 @@ import {
     FiBriefcase, FiShield, FiPercent, FiActivity,
     FiChevronLeft, FiChevronRight, FiChevronDown, FiX, FiPieChart
 } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../../context/DataContext';
 
 // 1. CẤU HÌNH MENU
 interface MenuItem {

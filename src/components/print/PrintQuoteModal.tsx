@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+PrintQuoteModal.tsximport React, { useEffect, useMemo } from 'react';
 import { FiPrinter } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import { useQuotes } from '../hooks/useQuotes'; // Import Hook mới

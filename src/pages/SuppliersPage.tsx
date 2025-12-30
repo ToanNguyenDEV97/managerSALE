@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiLoader } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
-import SupplierModal from '../components/SupplierModal'; // Import Modal
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import SupplierModal from '../components/features/partners/SupplierModal'; // Import Modal
 // Chỉ import useSuppliers và useDeleteSupplier
 import { useSuppliers, useDeleteSupplier } from '../hooks/useSuppliers';
 

@@ -2,8 +2,8 @@ import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAppContext } from './context/DataContext';
 
-// Components
-import Sidebar from './components/Sidebar';
+// Layout
+import MainLayout from './components/layout/MainLayout';
 
 // Pages
 import DashboardPage from './pages/DashboardPage';
@@ -24,26 +24,10 @@ import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 
-const MainLayout = () => {
-    const { isSidebarOpen } = useAppContext();
-    return (
-        <div className="flex min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-            <Sidebar />
-            <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'ml-64' : 'ml-20'}`}>
-                <main className="flex-1 p-6 overflow-x-hidden">
-                    <Outlet />
-                </main>
-            </div>
-        </div>
-    );
-};
-
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
     const { isAuthenticated, token } = useAppContext();
-    if (!isAuthenticated && !token) {
-        return <Navigate to="/login" replace />;
-    }
-    return children ? <>{children}</> : <Outlet />;
+    if (!isAuthenticated && !token) return <Navigate to="/login" replace />;
+    return children ? <>{children}</> : <MainLayout />; // Sử dụng MainLayout ở đây
 };
 
 const App: React.FC = () => {
@@ -55,7 +39,7 @@ const App: React.FC = () => {
             <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/" />} />
 
             <Route element={<ProtectedRoute />}>
-                <Route element={<MainLayout />}>
+                <Route element={<ProtectedRoute />}>
                     <Route path="/" element={<DashboardPage />} />
                     
                     <Route path="/products" element={<ProductsPage />} />

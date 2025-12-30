@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FiPlus, FiTrash2, FiLoader } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import PurchaseModal from '../components/PurchaseModal'; // Import Modal vỏ bọc
 import { usePurchases, useDeletePurchase } from '../hooks/usePurchases';
 

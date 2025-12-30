@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FiPlus, FiEye, FiTrash2, FiEdit, FiLoader, FiCheckSquare } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/Pagination';
-import ConfirmationModal from '../components/ConfirmationModal';
+import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import InventoryCheckDetailsModal from '../components/InventoryCheckDetailsModal';
 import { useInventoryChecks, useDeleteInventoryCheck } from '../hooks/useInventoryChecks'; // Import Hook
 

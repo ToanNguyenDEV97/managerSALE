@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCreditCard, FiLoader } from 'react-icons/fi';
 import type { Customer } from '../types';
 import CustomerModal from '../components/CustomerModal';
-import Pagination from '../components/Pagination';
+import Pagination from '../components/common/Pagination';
 import { useAppContext } from '../context/DataContext';
-import ConfirmationModal from '../components/ConfirmationModal';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import { useCustomers, useSaveCustomer, useDeleteCustomer } from '../hooks/useCustomers'; // Import Hook
 
 const CustomersPage: React.FC = () => {
