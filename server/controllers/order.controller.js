@@ -49,7 +49,7 @@ exports.createOrder = async (req, res) => {
 
         // A. Lấy thông tin khách hàng
         let customerName = 'Khách lẻ';
-        if (customerId) {
+        if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
             const customer = await Customer.findOne({ _id: customerId, organizationId }).session(session);
             if (customer) customerName = customer.name;
         }
@@ -205,5 +205,20 @@ exports.convertQuoteToOrder = async (req, res) => {
         res.status(500).json({ message: err.message });
     } finally {
         session.endSession();
+    }
+};
+// 6. XÓA ĐƠN HÀNG (Bổ sung hàm này)
+exports.deleteOrder = async (req, res) => {
+    try {
+        const order = await Order.findOneAndDelete({ 
+            _id: req.params.id, 
+            organizationId: req.organizationId 
+        });
+
+        if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        
+        res.json({ message: 'Đã xóa đơn hàng thành công' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 };

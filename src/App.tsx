@@ -41,27 +41,25 @@ const App: React.FC = () => {
             <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/" />} />
 
             <Route element={<ProtectedRoute />}>
-                <Route element={<ProtectedRoute />}>
-                    <Route path="/" element={<DashboardPage />} />
-                    
-                    <Route path="/products" element={<ProductsPage />} />
-                    <Route path="/sales" element={<SalesPage />} />
-                    <Route path="/invoices" element={<InvoicesPage />} />
-                    <Route path="/orders" element={<OrdersPage />} />
-                    <Route path="/quotes" element={<QuotesPage />} />
-                    
-                    {/* [2] Thêm Route Giao hàng vào đây */}
-                    <Route path="/deliveries" element={<DeliveriesPage />} />
+                <Route path="/" element={<DashboardPage />} />
+                
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/sales" element={<SalesPage />} />
+                <Route path="/invoices" element={<InvoicesPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/quotes" element={<QuotesPage />} />
+                
+                {/* [2] Thêm Route Giao hàng vào đây */}
+                <Route path="/deliveries" element={<DeliveriesPage />} />
 
-                    <Route path="/purchases" element={<PurchasesPage />} />
-                    <Route path="/inventory-checks" element={<InventoryChecksPage />} />
-                    <Route path="/customers" element={<CustomersPage />} />
-                    <Route path="/suppliers" element={<SuppliersPage />} />
-                    <Route path="/cash-flow" element={<CashFlowPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/users" element={<UsersPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                </Route>
+                <Route path="/purchases" element={<PurchasesPage />} />
+                <Route path="/inventory-checks" element={<InventoryChecksPage />} />
+                <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/suppliers" element={<SuppliersPage />} />
+                <Route path="/cash-flow" element={<CashFlowPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/users" element={<UsersPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
