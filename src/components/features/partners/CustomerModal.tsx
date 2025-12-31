@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { FiX, FiSave, FiUser, FiLoader } from 'react-icons/fi';
-import { api } from '../utils/api';
+import { FiSave, FiUser } from 'react-icons/fi';
+import { api } from '../../../utils/api';
 import toast from 'react-hot-toast';
-import { InputGroup, TextAreaGroup, SelectGroup } from './common/FormElements'; // Import bộ UI chuẩn
 
-interface CustomerModalProps {
+// Import UI System chuẩn
+import { BaseModal } from '../../common/BaseModal';
+import { FormInput } from '../../common/FormInput';
+import { Button } from '../../common/Button';
+
+interface Props {
     customer?: any;
     onClose: () => void;
     onSuccess: () => void;
 }
 
-const CustomerModal: React.FC<CustomerModalProps> = ({ customer, onClose, onSuccess }) => {
+const CustomerModal: React.FC<Props> = ({ customer, onClose, onSuccess }) => {
     const [formData, setFormData] = useState({
-        name: '',
-        phone: '',
-        email: '',
-        address: '',
-        taxCode: '', // Thêm Mã số thuế
-        group: 'Lẻ', // Phân loại khách
-        note: ''
+        name: '', phone: '', email: '', address: '', taxCode: '', group: 'Lẻ', note: ''
     });
     const [loading, setLoading] = useState(false);
 
@@ -40,109 +38,86 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer, onClose, onSucc
         e.preventDefault();
         setLoading(true);
         try {
-            if (customer) {
-                await api(`/api/customers/${customer._id}`, { method: 'PUT', body: JSON.stringify(formData) });
-                toast.success('Cập nhật khách hàng thành công');
-            } else {
-                await api('/api/customers', { method: 'POST', body: JSON.stringify(formData) });
-                toast.success('Thêm khách hàng mới thành công');
-            }
+            const url = customer ? `/api/customers/${customer._id}` : '/api/customers';
+            const method = customer ? 'PUT' : 'POST';
+            await api(url, { method, body: JSON.stringify(formData) });
+            
+            toast.success(customer ? 'Cập nhật thành công!' : 'Tạo mới thành công!');
             onSuccess();
         } catch (error: any) {
-            toast.error(error.message || 'Lỗi lưu dữ liệu');
+            toast.error(error.message);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                        <FiUser className="text-primary-600"/> 
-                        {customer ? 'Cập Nhật Khách Hàng' : 'Thêm Khách Hàng Mới'}
-                    </h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><FiX size={20}/></button>
+        <BaseModal 
+            isOpen={true} 
+            onClose={onClose} 
+            title={customer ? 'Cập Nhật Khách Hàng' : 'Thêm Khách Hàng Mới'}
+            icon={<FiUser size={24}/>}
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Hàng 1 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormInput 
+                        label="Tên khách hàng" required 
+                        placeholder="VD: Anh Tuấn"
+                        value={formData.name}
+                        onChange={e => setFormData({...formData, name: e.target.value})}
+                        autoFocus
+                    />
+                    <FormInput 
+                        label="Số điện thoại" required 
+                        placeholder="09xx..."
+                        value={formData.phone}
+                        onChange={e => setFormData({...formData, phone: e.target.value})}
+                    />
                 </div>
 
-                {/* Body - Sử dụng Grid để chia cột đẹp mắt */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <InputGroup 
-                        label="Tên khách hàng (*)" 
-                        placeholder="VD: Nguyễn Văn A" 
-                        value={formData.name} 
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        required autoFocus
+                {/* Hàng 2 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormInput 
+                        label="Email" type="email"
+                        value={formData.email}
+                        onChange={e => setFormData({...formData, email: e.target.value})}
                     />
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputGroup 
-                            label="Số điện thoại (*)" 
-                            placeholder="09xx..." 
-                            value={formData.phone} 
-                            onChange={e => setFormData({...formData, phone: e.target.value})}
-                            required
-                        />
-                        <SelectGroup 
-                            label="Nhóm khách"
-                            value={formData.group}
-                            onChange={e => setFormData({...formData, group: e.target.value})}
-                            options={[
-                                { value: 'Lẻ', label: 'Khách lẻ' },
-                                { value: 'Sỉ', label: 'Khách sỉ / Đại lý' },
-                                { value: 'VIP', label: 'Khách VIP' }
-                            ]}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputGroup 
-                            label="Email" 
-                            type="email"
-                            placeholder="customer@example.com" 
-                            value={formData.email} 
-                            onChange={e => setFormData({...formData, email: e.target.value})}
-                        />
-                        <InputGroup 
-                            label="Mã số thuế" 
-                            placeholder="Nếu là doanh nghiệp" 
-                            value={formData.taxCode} 
-                            onChange={e => setFormData({...formData, taxCode: e.target.value})}
-                        />
-                    </div>
-
-                    <TextAreaGroup 
-                        label="Địa chỉ chi tiết" 
-                        placeholder="Số nhà, đường, phường/xã..."
-                        value={formData.address}
-                        onChange={e => setFormData({...formData, address: e.target.value})}
+                    <FormInput 
+                        label="Mã số thuế" 
+                        value={formData.taxCode}
+                        onChange={e => setFormData({...formData, taxCode: e.target.value})}
                     />
+                </div>
 
-                    <TextAreaGroup 
-                        label="Ghi chú nội bộ" 
-                        rows={2}
-                        placeholder="Lưu ý về khách hàng này..."
-                        value={formData.note}
-                        onChange={e => setFormData({...formData, note: e.target.value})}
-                    />
+                <FormInput 
+                    label="Địa chỉ chi tiết" 
+                    value={formData.address}
+                    onChange={e => setFormData({...formData, address: e.target.value})}
+                />
 
-                    {/* Footer Actions */}
-                    <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors">Hủy bỏ</button>
-                        <button 
-                            type="submit" 
-                            disabled={loading}
-                            className="px-6 py-2 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 disabled:bg-slate-400 flex items-center gap-2 transition-all"
-                        >
-                            {loading ? <FiLoader className="animate-spin"/> : <FiSave/>}
-                            {customer ? 'Lưu Thay Đổi' : 'Tạo Mới'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                {/* Nhóm khách (Select chưa có component chung thì dùng HTML thường nhưng style theo FormInput) */}
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Nhóm khách hàng</label>
+                    <select 
+                        className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200"
+                        value={formData.group}
+                        onChange={e => setFormData({...formData, group: e.target.value})}
+                    >
+                        <option value="Lẻ">Khách lẻ</option>
+                        <option value="Sỉ">Khách sỉ / Đại lý</option>
+                        <option value="VIP">Khách VIP</option>
+                    </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <Button type="button" variant="secondary" onClick={onClose}>Hủy bỏ</Button>
+                    <Button type="submit" isLoading={loading} icon={<FiSave/>}>
+                        {customer ? 'Lưu Thay Đổi' : 'Tạo Mới'}
+                    </Button>
+                </div>
+            </form>
+        </BaseModal>
     );
 };
 

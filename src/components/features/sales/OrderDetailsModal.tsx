@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FiX, FiPrinter, FiCheckCircle, FiTruck, FiXCircle, FiArrowRight, FiFileText } from 'react-icons/fi';
-import { api } from '../utils/api';
+import { api } from '../../../utils/api';
 import toast from 'react-hot-toast';
-import PrintOrderModal from './business/PrintOrderModal';
+import PrintOrderModal from '../../print/PrintOrderModal';
 
 interface Props {
     order: any;

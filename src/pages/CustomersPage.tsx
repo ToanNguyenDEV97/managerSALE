@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCreditCard, FiLoader } from 'react-icons/fi';
 import type { Customer } from '../types';
-import CustomerModal from '../components/CustomerModal';
+import CustomerModal from '../components/features/partners/CustomerModal';
 import Pagination from '../components/common/Pagination';
 import { useAppContext } from '../context/DataContext';
 import ConfirmationModal from '../components/common/ConfirmationModal';

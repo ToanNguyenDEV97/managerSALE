@@ -3,7 +3,7 @@ import { FiPlus, FiTrash2, FiLoader } from 'react-icons/fi';
 import { useAppContext } from '../context/DataContext';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import PurchaseModal from '../components/PurchaseModal'; // Import Modal vỏ bọc
+import PurchaseModal from '../components/features/inventory/PurchaseModal'; // Import Modal vỏ bọc
 import { usePurchases, useDeletePurchase } from '../hooks/usePurchases';
 
 const PurchasesPage: React.FC = () => {

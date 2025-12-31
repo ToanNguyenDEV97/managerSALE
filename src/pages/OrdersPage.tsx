@@ -4,7 +4,7 @@ import { api } from '../utils/api';
 import toast from 'react-hot-toast';
 import Pagination from '../components/common/Pagination';
 import OrderFormModal from '../components/features/sales/OrderFormModal';
-import OrderDetailsModal from '../components/OrderDetailsModal';
+import OrderDetailsModal from '../components/features/sales/OrderDetailsModal';
 import { useAppContext } from '../context/DataContext';
 
 // Định nghĩa kiểu dữ liệu đơn giản cho Order

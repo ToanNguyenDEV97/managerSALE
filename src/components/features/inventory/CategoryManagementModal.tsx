@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FiX, FiEdit2, FiTrash2, FiSave, FiPlus, FiAlertTriangle, FiPackage, FiInfo } from 'react-icons/fi';
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '../hooks/useProducts';
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '../../../hooks/useProducts';
 import toast from 'react-hot-toast';
 
 // --- 1. MODAL CẢNH BÁO (Dùng khi không xóa được) ---

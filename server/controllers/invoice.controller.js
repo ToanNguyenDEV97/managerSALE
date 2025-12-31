@@ -17,7 +17,6 @@ exports.getInvoices = async (req, res) => {
 
         let query = { organizationId };
         
-        // Tìm kiếm đa năng
         if (search) {
             query.$or = [
                 { invoiceNumber: { $regex: search, $options: 'i' } },
@@ -25,14 +24,12 @@ exports.getInvoices = async (req, res) => {
             ];
         }
 
-        // Filter Status
         if (status && status !== 'all') {
-            if (status === 'debt') query.$expr = { $gt: ["$finalAmount", "$paidAmount"] }; // Còn nợ
-            else if (status === 'paid') query.$expr = { $lte: ["$finalAmount", "$paidAmount"] }; // Hết nợ
-            else query.status = status; // Status cụ thể (Hủy, Hoàn trả)
+            if (status === 'debt') query.$expr = { $gt: ["$finalAmount", "$paidAmount"] };
+            else if (status === 'paid') query.$expr = { $lte: ["$finalAmount", "$paidAmount"] };
+            else query.status = status;
         }
 
-        // Filter Date
         if (startDate && endDate) {
             query.createdAt = { 
                 $gte: new Date(startDate), 
@@ -45,7 +42,7 @@ exports.getInvoices = async (req, res) => {
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(limit)
-            .populate('items.productId', 'sku unit'); // Lấy thêm Unit/SKU nếu cần
+            .populate('items.productId', 'sku unit');
 
         res.json({ data: invoices, total, totalPages: Math.ceil(total / limit), currentPage: page });
     } catch (err) { res.status(500).json({ message: err.message }); }
@@ -60,7 +57,7 @@ exports.getInvoiceById = async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// 3. TẠO HÓA ĐƠN (Quan trọng)
+// 3. TẠO HÓA ĐƠN
 exports.createInvoice = async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
@@ -69,7 +66,6 @@ exports.createInvoice = async (req, res) => {
     try {
         const { customerId, items, discountAmount, paymentAmount, paymentMethod, deliveryInfo, note } = req.body;
         
-        // A. Lấy thông tin khách
         let customer = null;
         let customerName = 'Khách lẻ';
         if (customerId) {
@@ -77,50 +73,41 @@ exports.createInvoice = async (req, res) => {
             if (customer) customerName = customer.name;
         }
 
-        // B. Xử lý sản phẩm & Tính toán (BẢO MẬT GIÁ VỐN)
         let processedItems = [];
         let totalAmount = 0;
 
         for (const item of items) {
-            // Lấy giá gốc từ DB để đảm bảo chính xác
             const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
             if (!product) throw new Error(`Sản phẩm ID ${item.productId} không tồn tại`);
 
-            // 1. Trừ kho
             await changeStock({
                 session, organizationId, productId: item.productId, quantityChange: -item.quantity,
                 type: 'Xuất hàng', referenceNumber: 'POS', 
                 note: `Bán cho ${customerName}`
             });
 
-            // 2. Tính tiền item
             const itemTotal = item.quantity * item.price;
             totalAmount += itemTotal;
 
-            // 3. Snapshot dữ liệu item (Lưu giá vốn tại thời điểm bán)
             processedItems.push({
                 productId: product._id,
                 name: product.name,
                 quantity: item.quantity,
                 price: item.price,
-                costPrice: product.buyPrice || 0, // [QUAN TRỌNG] Lấy giá nhập làm giá vốn
+                costPrice: product.buyPrice || 0,
                 discount: item.discount || 0
             });
         }
 
-        // C. Tính tổng đơn
         const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
         const finalAmount = totalAmount - (Number(discountAmount) || 0) + shipFee;
         
-        // Xác định trạng thái
         let status = 'Chưa thanh toán';
         if (paymentAmount >= finalAmount) status = 'Đã thanh toán';
         else if (paymentAmount > 0) status = 'Thanh toán một phần';
 
-        // D. Tạo Invoice Number
         const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
 
-        // E. Lưu Hóa Đơn
         const newInvoice = new Invoice({
             invoiceNumber, organizationId,
             customerId: customerId || null, customerName,
@@ -131,20 +118,15 @@ exports.createInvoice = async (req, res) => {
             paymentMethod: paymentMethod || 'Tiền mặt',
             status, note,
             isDelivery: deliveryInfo?.isDelivery || false,
-            delivery: deliveryInfo?.isDelivery ? {
-                ...deliveryInfo,
-                status: 'Chờ giao'
-            } : undefined
+            delivery: deliveryInfo?.isDelivery ? { ...deliveryInfo, status: 'Chờ giao' } : undefined
         });
         await newInvoice.save({ session });
 
-        // F. Cập nhật công nợ Khách hàng
         const debtChange = finalAmount - (paymentAmount || 0);
         if (customer && debtChange > 0) {
             await Customer.findByIdAndUpdate(customerId, { $inc: { totalDebt: debtChange } }).session(session);
         }
 
-        // G. Tạo Phiếu Thu (Nếu có trả tiền)
         let savedVoucher = null;
         if (paymentAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
@@ -164,15 +146,13 @@ exports.createInvoice = async (req, res) => {
 
     } catch (err) { 
         await session.abortTransaction(); 
-        console.error(err);
         res.status(400).json({ message: err.message }); 
-    } finally { 
-        session.endSession(); 
-    }
+    } finally { session.endSession(); }
 };
 
-// 4. HỦY HÓA ĐƠN (Soft Delete + Revert Money)
-exports.deleteInvoice = async (req, res) => {
+// 4. TRẢ HÀNG / HỦY HÓA ĐƠN (Soft Delete)
+// [SỬA LỖI] Đổi tên từ deleteInvoice -> returnInvoice để khớp với route
+exports.returnInvoice = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
@@ -180,43 +160,41 @@ exports.deleteInvoice = async (req, res) => {
         if (!invoice) throw new Error('Hóa đơn không tồn tại');
         if (invoice.status === 'Hủy') throw new Error('Hóa đơn này đã hủy rồi');
 
-        // 1. Trả hàng về kho
+        // Hoàn kho
         for (const item of invoice.items) {
             await changeStock({
                 session, organizationId: req.organizationId, productId: item.productId, 
-                quantityChange: item.quantity, // Cộng lại kho
+                quantityChange: item.quantity, 
                 type: 'Nhập hàng trả', 
                 referenceNumber: invoice.invoiceNumber, note: 'Hủy hóa đơn bán hàng'
             });
         }
 
-        // 2. Trừ bớt nợ khách (Nếu đơn đó khách đang nợ)
+        // Trừ nợ khách
         const currentDebtOfInvoice = invoice.finalAmount - invoice.paidAmount;
         if (invoice.customerId && currentDebtOfInvoice > 0) {
             await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -currentDebtOfInvoice } }).session(session);
         }
 
-        // 3. Hoàn tiền (Nếu khách đã trả tiền -> Tạo phiếu chi hoàn lại)
-        // [QUAN TRỌNG] Logic chuẩn: Nếu đã thu tiền, giờ hủy đơn thì phải trả lại tiền khách
+        // Hoàn tiền nếu cần
         if (invoice.paidAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT_SLIP, req.organizationId);
             await new CashFlowTransaction({
                 transactionNumber, type: 'chi', date: new Date(),
                 amount: invoice.paidAmount,
-                paymentMethod: 'Tiền mặt', // Mặc định trả tiền mặt hoặc theo thực tế
+                paymentMethod: 'Tiền mặt',
                 payerReceiverName: invoice.customerName,
                 description: `Hoàn tiền do hủy đơn ${invoice.invoiceNumber}`,
                 category: 'Hoàn tiền', referenceId: invoice._id, organizationId: req.organizationId
             }).save({ session });
         }
 
-        // 4. Cập nhật trạng thái Hủy (Không xóa vĩnh viễn)
         invoice.status = 'Hủy';
         invoice.note = (invoice.note || '') + ' [Đã hủy đơn]';
         await invoice.save({ session });
 
         await session.commitTransaction();
-        res.json({ message: 'Đã hủy hóa đơn, hoàn kho và xử lý tài chính thành công.' });
+        res.json({ message: 'Đã hủy hóa đơn, hoàn kho thành công.' });
     } catch (err) { await session.abortTransaction(); res.status(500).json({ message: err.message }); } 
     finally { session.endSession(); }
 };
@@ -257,7 +235,7 @@ exports.payInvoice = async (req, res) => {
     finally { session.endSession(); }
 };
 
-// 6. Xóa hóa đơn (Hủy)
+// 6. Xóa hóa đơn (Xóa vĩnh viễn)
 exports.deleteInvoice = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -265,16 +243,14 @@ exports.deleteInvoice = async (req, res) => {
         const invoice = await Invoice.findOne({ _id: req.params.id, organizationId: req.organizationId }).session(session);
         if (!invoice) throw new Error('Hóa đơn không tồn tại');
 
-        // Trả hàng về kho
         for (const item of invoice.items) {
             await changeStock({
                 session, organizationId: req.organizationId, productId: item.productId, 
                 quantityChange: item.quantity, type: 'Hủy hóa đơn', 
-                referenceNumber: invoice.invoiceNumber, note: 'Hủy đơn bán hàng'
+                referenceNumber: invoice.invoiceNumber, note: 'Xóa đơn bán hàng'
             });
         }
 
-        // Trừ nợ
         const debtAmount = invoice.totalAmount - invoice.paidAmount;
         if (invoice.customerId && debtAmount > 0) {
             await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { debt: -debtAmount } }).session(session);
@@ -282,7 +258,7 @@ exports.deleteInvoice = async (req, res) => {
 
         await Invoice.deleteOne({ _id: invoice._id }).session(session);
         await session.commitTransaction();
-        res.json({ message: 'Đã hủy hóa đơn thành công' });
+        res.json({ message: 'Đã xóa hóa đơn thành công' });
     } catch (err) { await session.abortTransaction(); res.status(500).json({ message: err.message }); } 
     finally { session.endSession(); }
 };

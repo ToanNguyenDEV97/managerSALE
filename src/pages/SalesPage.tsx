@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiTrash2, FiSearch, FiCheckCircle, FiShoppingCart, FiUser, FiLoader } from 'react-icons/fi';
 import type { InvoiceItem } from '../types';
-import QuickCustomerModal from '../components/QuickCustomerModal';
+import QuickCustomerModal from '../components/features/partners/QuickCustomerModal';
 import CurrencyInput from '../components/common/CurrencyInput';
 import toast from 'react-hot-toast';
 
@@ -11,7 +11,7 @@ import { useAllCustomers, useSaveCustomer } from '../hooks/useCustomers';
 import { useSaveInvoice } from '../hooks/useInvoices';
 
 // [QUAN TRỌNG] Import Modal In (Hãy chắc chắn đường dẫn file này đúng)
-import PrintInvoiceModal from '../components/PrintInvoiceModal';
+import PrintInvoiceModal from '../components/print/PrintInvoiceModal';
 
 type PaymentMethod = 'cash' | 'debt';
 

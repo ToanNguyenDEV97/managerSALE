@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../utils/api'; 
-import { readMoneyToText } from '../utils/currency';
-import { useAppContext } from '../context/DataContext'; 
+import { api } from '../../utils/api'; 
+import { readMoneyToText } from '../../utils/currency';
+import { useAppContext } from '../../context/DataContext'; 
 import { FiX, FiPrinter, FiLoader, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi';
 
 interface Props {

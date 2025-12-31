@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { FiX } from 'react-icons/fi';
-import SupplierForm from '../../SupplierForm';
+import SupplierForm from './SupplierForm';
 
 interface SupplierModalProps {
     isOpen: boolean;

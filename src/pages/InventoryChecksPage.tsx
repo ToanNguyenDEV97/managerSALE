@@ -3,7 +3,7 @@ import { FiPlus, FiEye, FiTrash2, FiEdit, FiLoader, FiCheckSquare } from 'react-
 import { useAppContext } from '../context/DataContext';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import InventoryCheckDetailsModal from '../components/InventoryCheckDetailsModal';
+import InventoryCheckDetailsModal from '../components/features/inventory/InventoryCheckDetailsModal';
 import { useInventoryChecks, useDeleteInventoryCheck } from '../hooks/useInventoryChecks'; // Import Hook
 
 const InventoryChecksPage: React.FC = () => {

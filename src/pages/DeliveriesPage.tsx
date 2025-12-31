@@ -6,7 +6,7 @@ import {
 import { api } from '../utils/api';
 import toast from 'react-hot-toast';
 import Pagination from '../components/common/Pagination';
-import OrderDetailsModal from '../components/OrderDetailsModal';
+import OrderDetailsModal from '../components/features/sales/OrderDetailsModal';
 
 const DeliveriesPage: React.FC = () => {
     // State quản lý dữ liệu

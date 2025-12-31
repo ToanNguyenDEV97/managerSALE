@@ -5,9 +5,9 @@ import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 
 // --- IMPORTS CÁC MODAL ---
-import ProductModal from '../components/ProductModal';
-import CategoryManagerModal from '../components/CategoryManagementModal';
-import StockHistoryModal from '../components/StockHistoryModal'; // <--- Modal Thẻ kho mới
+import ProductModal from '../components/features/inventory/ProductModal';
+import CategoryManagerModal from '../components/features/inventory/CategoryManagementModal';
+import StockHistoryModal from '../components/features/inventory/StockHistoryModal'; // <--- Modal Thẻ kho mới
 
 // --- IMPORTS HOOKS ---
 import { useProducts, useDeleteProduct } from '../hooks/useProducts';

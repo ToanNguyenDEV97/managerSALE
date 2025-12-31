@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { FiPlus, FiTrash2 } from 'react-icons/fi';
-import type { Quote, QuoteItem } from '../types';
-import { useAppContext } from '../context/DataContext';
+import type { Quote, QuoteItem } from '../../../types';
+import { useAppContext } from '../../../context/DataContext';
 
 // --- 1. IMPORT CÁC HOOK CẦN THIẾT ---
 // (Đảm bảo bạn đã có các file hook này trong thư mục hooks)
-import { useCustomers } from '../hooks/useCustomers';
-import { useProducts } from '../hooks/useProducts';
-import { useCreateQuote, useUpdateQuote } from '../hooks/useQuotes'; 
+import { useCustomers } from '../../../hooks/useCustomers';
+import { useProducts } from '../../../hooks/useProducts';
+import { useCreateQuote, useUpdateQuote } from '../../../hooks/useQuotes'; 
 import toast from 'react-hot-toast'; // Thêm toast để báo lỗi đẹp hơn
 
 const QuoteForm: React.FC = () => {

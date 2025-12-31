@@ -2,7 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAppContext } from './context/DataContext';
 
-// Layout
+// 1. Import Layout chuẩn
 import MainLayout from './components/layout/MainLayout';
 
 // Pages
@@ -27,7 +27,9 @@ import RegisterPage from './pages/RegisterPage';
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
     const { isAuthenticated, token } = useAppContext();
     if (!isAuthenticated && !token) return <Navigate to="/login" replace />;
-    return children ? <>{children}</> : <MainLayout />; // Sử dụng MainLayout ở đây
+    return (
+        <MainLayout /> // <-- Sử dụng component MainLayout đã tách
+    );
 };
 
 const App: React.FC = () => {

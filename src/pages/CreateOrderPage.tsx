@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { useProducts } from '../hooks/useProducts';
 import { useAllCustomers, useSaveCustomer } from '../hooks/useCustomers';
 import { useSaveOrder } from '../hooks/useOrders';
-import QuickCustomerModal from '../components/QuickCustomerModal';
+import QuickCustomerModal from '../components/features/partners/QuickCustomerModal';
 
 // 2. THÊM import useAppContext để lấy hàm chuyển trang
 import { useAppContext } from '../context/DataContext';

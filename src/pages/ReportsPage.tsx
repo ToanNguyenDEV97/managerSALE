@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { FiTrendingUp, FiPackage, FiUsers, FiDollarSign, FiLoader } from 'react-icons/fi';
-import DrillDownModal from '../components/DrillDownModal';
+import DrillDownModal from '../components/features/inventory/DrillDownModal';
 
 // Import Hooks lấy dữ liệu toàn bộ
 import { useAllInvoices } from '../hooks/useInvoices';

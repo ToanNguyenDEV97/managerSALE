@@ -1,6 +1,6 @@
 import React from 'react';
 import { FiX, FiArrowUp, FiArrowDown, FiRotateCcw } from 'react-icons/fi';
-import { useStockHistory } from '../hooks/useProducts';
+import { useStockHistory } from '../../../hooks/useProducts';
 
 interface StockHistoryModalProps {
     isOpen: boolean;

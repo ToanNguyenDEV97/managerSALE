@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FiUser, FiLogOut, FiChevronDown } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../../context/DataContext';
 
 const UserDropdown: React.FC = () => {
     const { currentUser, logout, setIsProfileModalOpen } = useAppContext();

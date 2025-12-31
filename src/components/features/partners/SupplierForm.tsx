@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSave, FiX } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../../../context/DataContext';
 // Import đúng 2 hook riêng biệt
-import { useCreateSupplier, useUpdateSupplier } from '../hooks/useSuppliers';
+import { useCreateSupplier, useUpdateSupplier } from '../../../hooks/useSuppliers';
 import toast from 'react-hot-toast';
 
 const SupplierForm: React.FC = () => {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiSave, FiX } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
-import { useCreateProduct, useUpdateProduct, useCategories } from '../hooks/useProducts';
+import { useAppContext } from '../../../context/DataContext';
+import { useCreateProduct, useUpdateProduct, useCategories } from '../../../hooks/useProducts';
 import toast from 'react-hot-toast';
 
 const ProductForm: React.FC = () => {

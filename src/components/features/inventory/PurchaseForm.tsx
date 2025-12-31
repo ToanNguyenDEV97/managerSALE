@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FiPlus, FiTrash2, FiSave, FiX, FiRefreshCw } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
-import { useProducts, useCreateProduct } from '../hooks/useProducts'; 
-import { useSuppliers } from '../hooks/useSuppliers';
-import { useCreatePurchase } from '../hooks/usePurchases';
+import { useAppContext } from '../../../context/DataContext';
+import { useProducts, useCreateProduct } from '../../../hooks/useProducts'; 
+import { useSuppliers } from '../../../hooks/useSuppliers';
+import { useCreatePurchase } from '../../../hooks/usePurchases';
 import toast from 'react-hot-toast';
 
 const PurchaseForm: React.FC = () => {
