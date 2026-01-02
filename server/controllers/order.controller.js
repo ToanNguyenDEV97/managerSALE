@@ -49,11 +49,16 @@ exports.createOrder = async (req, res) => {
 
         // A. Lấy thông tin khách hàng
         let customerName = 'Khách lẻ';
+        let customerPhone = '';
+        let customerAddress = '';
         if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
             const customer = await Customer.findOne({ _id: customerId, organizationId }).session(session);
-            if (customer) customerName = customer.name;
+            if (customer) {
+                customerName = customer.name;
+                customerPhone = customer.phone;
+                customerAddress = customer.address;
+            }
         }
-
         // B. Xử lý sản phẩm & Tính toán
         // [QUAN TRỌNG] Lấy giá vốn (buyPrice) từ DB để snapshot lại
         let totalAmount = 0;
@@ -90,6 +95,8 @@ exports.createOrder = async (req, res) => {
             orderNumber,
             customerId: customerId || null,
             customerName,
+            customerPhone,   
+            customerAddress,
             items: processedItems,
             totalAmount: finalTotal,
             depositAmount: paymentAmount || 0, // Tiền cọc
@@ -99,6 +106,7 @@ exports.createOrder = async (req, res) => {
             isDelivery: deliveryInfo?.isDelivery || false,
             delivery: deliveryInfo?.isDelivery ? {
                 address: deliveryInfo.address,
+                phone: deliveryInfo.phone,
                 shipFee: shipFee,
                 status: 'Chờ giao'
             } : undefined

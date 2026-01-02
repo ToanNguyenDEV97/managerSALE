@@ -88,9 +88,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (remember) {
             localStorage.setItem('token', data.token);
             sessionStorage.removeItem('token');
+            // Lưu email để tự động điền lần sau
+            localStorage.setItem('rememberedEmail', email);
         } else {
             sessionStorage.setItem('token', data.token);
             localStorage.removeItem('token');
+            // Xoá email đã nhớ nếu có
+            localStorage.removeItem('rememberedEmail');
         }
     };
 

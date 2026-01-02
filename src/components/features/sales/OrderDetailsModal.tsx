@@ -1,198 +1,215 @@
 import React, { useState } from 'react';
-import { FiX, FiPrinter, FiCheckCircle, FiTruck, FiXCircle, FiArrowRight, FiFileText } from 'react-icons/fi';
-import { api } from '../../../utils/api';
-import toast from 'react-hot-toast';
+import { FiX, FiPrinter, FiEdit, FiTruck, FiMapPin, FiPhone, FiUser, FiBox, FiDollarSign } from 'react-icons/fi';
+import { BaseModal } from '../../common/BaseModal';
+import { Button } from '../../common/Button';
+
+// Import các Modal in ấn
 import PrintOrderModal from '../../print/PrintOrderModal';
+import PrintDeliveryModal from '../../print/PrintDeliveryModal'; // [MỚI] Import phiếu giao hàng
 
 interface Props {
     order: any;
     onClose: () => void;
-    onUpdate: () => void;
+    onUpdate?: () => void;
 }
 
 const OrderDetailsModal: React.FC<Props> = ({ order, onClose, onUpdate }) => {
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [showPrint, setShowPrint] = useState(false);
+    // State quản lý các modal in
+    const [isPrintOrderOpen, setIsPrintOrderOpen] = useState(false);
+    const [isPrintDeliveryOpen, setIsPrintDeliveryOpen] = useState(false); // [MỚI] State mở phiếu giao
 
-    // 1. Chức năng: Chuyển Đơn hàng -> Hóa đơn (Hoàn tất bán hàng)
-    const handleConvertToInvoice = async () => {
-        if (!window.confirm('Xác nhận: Khách đã nhận hàng/thanh toán? Hệ thống sẽ tạo Hóa đơn và trừ kho chính thức.')) return;
-        
-        setIsProcessing(true);
-        try {
-            // Bước 1: Gọi API tạo hóa đơn từ dữ liệu đơn hàng
-            await api('/api/invoices', {
-                method: 'POST',
-                body: JSON.stringify({
-                    orderId: order._id,
-                    customerId: order.customerId,
-                    items: order.items, // Backend sẽ tự lấy lại giá vốn mới nhất để an toàn
-                    discountAmount: 0,
-                    paymentAmount: order.totalAmount, // Giả định khách trả hết (hoặc bạn có thể làm popup nhập tiền)
-                    paymentMethod: 'Tiền mặt',
-                    deliveryInfo: order.delivery,
-                    note: `Chuyển từ đơn hàng #${order.orderNumber}`
-                })
-            });
+    if (!order) return null;
 
-            // Bước 2: Cập nhật trạng thái Đơn hàng -> Hoàn thành
-            await api(`/api/orders/${order._id}`, {
-                method: 'PUT',
-                body: JSON.stringify({ status: 'Hoàn thành' })
-            });
-
-            toast.success('Đã xuất hàng và tạo hóa đơn thành công!');
-            onUpdate();
-        } catch (err: any) {
-            toast.error(err.message || 'Lỗi khi chuyển đổi');
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    // 2. Chức năng: Cập nhật trạng thái thủ công (Ví dụ: Đang giao)
-    const updateStatus = async (status: string) => {
-        try {
-            await api(`/api/orders/${order._id}`, { method: 'PUT', body: JSON.stringify({ status }) });
-            toast.success(`Đã cập nhật: ${status}`);
-            onUpdate();
-        } catch (error) { toast.error('Lỗi cập nhật'); }
-    };
+    // Tính toán hiển thị
+    const deposit = order.depositAmount || 0;
+    const paid = order.paidAmount || 0; // Đã thanh toán (bao gồm cọc)
+    const total = order.totalAmount || 0;
+    const cod = Math.max(0, total - paid); // Tiền thu hộ = Tổng - Đã trả
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            Đơn hàng #{order.orderNumber}
-                            <span className={`px-3 py-1 rounded-full text-xs ${
-                                order.status === 'Mới' ? 'bg-blue-100 text-blue-700' :
-                                order.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
-                                order.status === 'Hủy' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                            }`}>{order.status}</span>
-                        </h2>
-                        <p className="text-slate-500 text-sm mt-1">Ngày đặt: {new Date(order.createdAt).toLocaleString('vi-VN')}</p>
+        <BaseModal 
+            isOpen={true} 
+            onClose={onClose} 
+            title={`Chi Tiết Đơn Hàng #${order.orderNumber}`} 
+            width="max-w-4xl"
+            icon={<FiBox/>}
+        >
+            <div className="flex flex-col h-[80vh] bg-slate-50">
+                {/* 1. HEADER ACTIONS (Thanh công cụ) */}
+                <div className="bg-white p-4 border-b flex justify-between items-center shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                            order.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
+                            order.status === 'Hủy' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
+                        }`}>
+                            {order.status}
+                        </span>
+                        {order.isDelivery && (
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200 flex items-center gap-1">
+                                <FiTruck/> Giao hàng
+                            </span>
+                        )}
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full"><FiX size={24} /></button>
+                    
+                    <div className="flex gap-2">
+                        {/* NÚT IN ĐƠN HÀNG (Cho khách) */}
+                        <button 
+                            onClick={() => setIsPrintOrderOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-bold transition-colors shadow-sm"
+                        >
+                            <FiPrinter/> In Đơn
+                        </button>
+
+                        {/* [MỚI] NÚT IN PHIẾU GIAO (Cho Shipper) - Chỉ hiện khi là đơn giao hàng */}
+                        {order.isDelivery && (
+                            <button 
+                                onClick={() => setIsPrintDeliveryOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 rounded-lg font-bold transition-colors shadow-sm"
+                            >
+                                <FiTruck/> In Phiếu Giao
+                            </button>
+                        )}
+                        
+                        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
+                            <FiX size={20}/>
+                        </button>
+                    </div>
                 </div>
 
-                {/* Body */}
-                <div className="p-6 overflow-y-auto flex-1">
-                    {/* Thông tin khách & Giao hàng */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><FiFileText/> Thông tin khách hàng</h3>
-                            <p><span className="text-slate-500">Tên:</span> <b>{order.customerName}</b></p>
-                            {order.delivery?.phone && <p><span className="text-slate-500">SĐT:</span> {order.delivery.phone}</p>}
+                {/* 2. BODY CONTENT (Cuộn được) */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    
+                    {/* Block: Thông tin chung & Khách hàng */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Cột Trái: Thông tin Khách */}
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-3 border-b pb-2">
+                                <FiUser className="text-primary-600"/> Thông Tin Khách Hàng
+                            </h3>
+                            <div className="space-y-2 text-sm">
+                                <p className="flex justify-between"><span className="text-slate-500">Tên khách:</span> <span className="font-bold">{order.customerName}</span></p>
+                                <p className="flex justify-between"><span className="text-slate-500">Ngày đặt:</span> <span>{new Date(order.createdAt).toLocaleString('vi-VN')}</span></p>
+                                <p className="flex justify-between"><span className="text-slate-500">Ghi chú:</span> <span className="italic text-slate-600">{order.note || 'Không có'}</span></p>
+                            </div>
                         </div>
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><FiTruck/> Giao nhận</h3>
-                            <p><span className="text-slate-500">Hình thức:</span> {order.isDelivery ? 'Giao tận nơi' : 'Nhận tại quầy'}</p>
-                            {order.isDelivery && <p className="truncate"><span className="text-slate-500">Địa chỉ:</span> {order.delivery?.address}</p>}
-                            {order.note && <p className="text-yellow-600 mt-1 italic">Ghi chú: {order.note}</p>}
-                        </div>
+
+                        {/* Cột Phải: Thông tin Giao Hàng */}
+                        {order.isDelivery && (
+                            <div className="bg-white p-4 rounded-xl border border-purple-100 shadow-sm bg-purple-50/30">
+                                <h3 className="font-bold text-purple-700 flex items-center gap-2 mb-3 border-b border-purple-100 pb-2">
+                                    <FiTruck/> Thông Tin Giao Hàng
+                                </h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex gap-2">
+                                        <FiUser className="text-slate-400 mt-0.5 flex-shrink-0"/>
+                                        <span className="font-medium text-slate-800">{order.customerName}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <FiPhone className="text-slate-400 mt-0.5 flex-shrink-0"/>
+                                        <span className="font-bold text-slate-800">{order.delivery?.phone || '---'}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <FiMapPin className="text-slate-400 mt-0.5 flex-shrink-0"/>
+                                        <span className="text-slate-600 leading-snug">{order.delivery?.address || '---'}</span>
+                                    </div>
+                                    <div className="flex justify-between border-t border-purple-100 pt-2 mt-2">
+                                        <span className="text-slate-500">Phí Ship:</span>
+                                        <span className="font-bold text-slate-800">{order.delivery?.shipFee?.toLocaleString()} ₫</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Bảng sản phẩm */}
-                    <table className="w-full text-sm text-left mb-6">
-                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
-                            <tr>
-                                <th className="px-4 py-3 rounded-l-lg">Sản phẩm</th>
-                                <th className="px-4 py-3 text-center">SL</th>
-                                <th className="px-4 py-3 text-right">Đơn giá</th>
-                                <th className="px-4 py-3 text-right rounded-r-lg">Thành tiền</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {order.items.map((item: any, idx: number) => (
-                                <tr key={idx}>
-                                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                                    <td className="px-4 py-3 text-center">{item.quantity}</td>
-                                    <td className="px-4 py-3 text-right">{item.price.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right font-bold">{(item.price * item.quantity).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="border-t border-slate-200">
-                            <tr>
-                                <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-600">Tổng tiền hàng</td>
-                                <td className="px-4 py-3 text-right font-bold">{(order.totalAmount - (order.delivery?.shipFee || 0)).toLocaleString()}</td>
-                            </tr>
-                            {order.isDelivery && (
+                    {/* Block: Danh sách sản phẩm */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-700 font-bold border-b">
                                 <tr>
-                                    <td colSpan={3} className="px-4 py-1 text-right text-slate-500">Phí vận chuyển</td>
-                                    <td className="px-4 py-1 text-right">{order.delivery?.shipFee?.toLocaleString()}</td>
+                                    <th className="px-4 py-3">Sản Phẩm</th>
+                                    <th className="px-4 py-3 text-center">ĐVT</th>
+                                    <th className="px-4 py-3 text-center">SL</th>
+                                    <th className="px-4 py-3 text-right">Đơn Giá</th>
+                                    <th className="px-4 py-3 text-right">Thành Tiền</th>
                                 </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {order.items?.map((item: any, idx: number) => (
+                                    <tr key={idx}>
+                                        <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+                                        <td className="px-4 py-3 text-center text-slate-500">{item.unit || 'Cái'}</td>
+                                        <td className="px-4 py-3 text-center font-bold">{item.quantity}</td>
+                                        <td className="px-4 py-3 text-right">{item.price?.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right font-bold">
+                                            {(item.price * item.quantity).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Block: Tổng kết tài chính */}
+                    <div className="flex justify-end">
+                        <div className="w-full md:w-1/2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Tổng tiền hàng:</span>
+                                <span className="font-bold">{total.toLocaleString()} ₫</span>
+                            </div>
+                            {order.delivery?.shipFee > 0 && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Phí vận chuyển:</span>
+                                    <span className="font-bold">{order.delivery.shipFee.toLocaleString()} ₫</span>
+                                </div>
                             )}
-                            <tr className="text-lg text-primary-600">
-                                <td colSpan={3} className="px-4 py-3 text-right font-bold">TỔNG CỘNG</td>
-                                <td className="px-4 py-3 text-right font-bold">{order.totalAmount.toLocaleString()} ₫</td>
-                            </tr>
-                            {order.depositAmount > 0 && (
-                                <tr className="text-green-600">
-                                    <td colSpan={3} className="px-4 py-1 text-right italic">Đã đặt cọc</td>
-                                    <td className="px-4 py-1 text-right italic">-{order.depositAmount.toLocaleString()}</td>
-                                </tr>
-                            )}
-                        </tfoot>
-                    </table>
+                            <div className="border-t my-2"></div>
+                            <div className="flex justify-between text-lg font-bold">
+                                <span className="text-slate-800">TỔNG CỘNG:</span>
+                                <span className="text-primary-600">{(total + (order.delivery?.shipFee || 0)).toLocaleString()} ₫</span>
+                            </div>
+                            
+                            {/* Thông tin thanh toán / Công nợ */}
+                            <div className="bg-slate-50 p-3 rounded-lg space-y-1 mt-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Đã thanh toán / Cọc:</span>
+                                    <span className="font-bold text-green-600">{paid.toLocaleString()} ₫</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Cần thu (COD):</span>
+                                    <span className="font-bold text-red-600">{cod.toLocaleString()} ₫</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Footer Action */}
-                <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-end">
-                    <button 
-                        onClick={() => setShowPrint(true)}
-                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 flex items-center gap-2 font-medium"
-                    >
-                        <FiPrinter /> In Phiếu
-                    </button>
-
-                    {order.status === 'Mới' && (
-                        <>
-                            <button 
-                                onClick={() => updateStatus('Hủy')}
-                                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 flex items-center gap-2 font-medium"
-                            >
-                                <FiXCircle /> Hủy Đơn
-                            </button>
-                            <button 
-                                onClick={() => updateStatus('Đang xử lý')}
-                                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center gap-2 font-medium"
-                            >
-                                <FiArrowRight /> Duyệt Đơn
-                            </button>
-                        </>
-                    )}
-
-                    {order.status === 'Đang xử lý' && (
-                        <button 
-                            onClick={() => updateStatus('Đang giao')}
-                            className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 flex items-center gap-2 font-medium"
-                        >
-                            <FiTruck /> Giao Hàng
-                        </button>
-                    )}
-
-                    {/* NÚT QUAN TRỌNG NHẤT: CHUYỂN THÀNH HÓA ĐƠN */}
-                    {(order.status === 'Mới' || order.status === 'Đang xử lý' || order.status === 'Đang giao') && (
-                        <button 
-                            onClick={handleConvertToInvoice}
-                            disabled={isProcessing}
-                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 font-bold transition-all hover:-translate-y-0.5"
-                        >
-                            {isProcessing ? 'Đang xử lý...' : <><FiCheckCircle /> Xuất Hàng & Hoàn Tất</>}
-                        </button>
-                    )}
+                {/* 3. FOOTER ACTIONS */}
+                <div className="bg-white p-4 border-t flex justify-end gap-3">
+                    <Button variant="secondary" onClick={onClose}>Đóng</Button>
+                    {/* Có thể thêm các nút hành động khác như: Sửa đơn, Hủy đơn nếu cần */}
                 </div>
             </div>
 
-            {showPrint && (
-                <PrintOrderModal order={order} onClose={() => setShowPrint(false)} />
+            {/* --- MODALS IN ẤN --- */}
+            
+            {/* Modal In Đơn Hàng (Cho Khách) */}
+            {isPrintOrderOpen && (
+                <PrintOrderModal 
+                    order={order} 
+                    onClose={() => setIsPrintOrderOpen(false)} 
+                />
             )}
-        </div>
+
+            {/* Modal In Phiếu Giao (Cho Shipper) */}
+            {isPrintDeliveryOpen && (
+                <PrintDeliveryModal 
+                    order={order} 
+                    onClose={() => setIsPrintDeliveryOpen(false)} 
+                />
+            )}
+
+        </BaseModal>
     );
 };
 

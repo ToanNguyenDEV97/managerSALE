@@ -6,6 +6,9 @@ const OrderSchema = new mongoose.Schema({
     
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
     customerName: { type: String },
+
+    customerPhone: { type: String },
+    customerAddress: { type: String },
     
     items: [{
         productId: { type: String },
@@ -18,6 +21,7 @@ const OrderSchema = new mongoose.Schema({
     
     totalAmount: { type: Number, required: true },
     depositAmount: { type: Number, default: 0 }, // Tiền cọc (nếu có)
+    paidAmount: { type: Number, default: 0 },
     
     issueDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date }, // Ngày hẹn giao
@@ -29,7 +33,15 @@ const OrderSchema = new mongoose.Schema({
         default: 'Mới' 
     },
     
-    note: { type: String }
+    note: { type: String },
+    isDelivery: { type: Boolean, default: false, index: true },
+    delivery: {
+        address: { type: String },
+        shipFee: { type: Number, default: 0 },
+        phone: { type: String },     // Nên lưu thêm SĐT nhận hàng
+        shipperName: { type: String },
+        status: { type: String, default: 'Chờ giao' }
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', OrderSchema);
