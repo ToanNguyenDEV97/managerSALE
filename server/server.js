@@ -70,8 +70,20 @@ app.put('/api/organization', protect, async (req, res) => {
 });
 
 // 5. Serve Static Files (Production)
-app.use(express.static(path.join(__dirname, '..')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
+// Chỉ phục vụ thư mục 'dist' (là thư mục chứa code Frontend sau khi đã build)
+const buildPath = path.join(__dirname, '../dist');
+
+// Kiểm tra xem đã build chưa để tránh lỗi crash server
+if (require('fs').existsSync(buildPath)) {
+    app.use(express.static(buildPath));
+    
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(buildPath, 'index.html'));
+    });
+} else {
+    // Nếu chưa build thì báo lỗi nhẹ
+    app.get('/', (req, res) => res.send('API Server is running. Frontend not built yet. Run "npm run build" in root folder.'));
+}
 
 // 6. Start Server
 app.listen(port, () => console.log(`✅ Server running on port ${port}`));

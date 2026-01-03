@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/auth.controller');
+const { login, registerRequest, checkOtp, registerVerify, getMe, createEmployee } = require('../controllers/auth.controller');
 
 // Import Middleware và Schema
 const validate = require('../middleware/validate'); 
@@ -37,5 +37,7 @@ router.put('/profile', protect, validate(authValidation.updateProfile), async (r
 
 // Đường dẫn thực tế sẽ là: GET /api/auth/me
 router.get('/me', protect, authController.getMe);
+
+router.post('/create-employee', protect, createEmployee); // Cần protect để biết ai đang gọi
 
 module.exports = router;

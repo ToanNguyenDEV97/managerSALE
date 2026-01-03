@@ -118,3 +118,36 @@ exports.getMe = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+// Tạo tài khoản cho nhân viên (Chỉ Owner mới gọi được - cần thêm middleware checkRole sau này)
+exports.createEmployee = async (req, res) => {
+    try {
+        const { email, password, name } = req.body;
+        
+        // Lấy thông tin người đang gọi API (Chủ cửa hàng)
+        const owner = await User.findById(req.user.id);
+        
+        if (!owner || !owner.organizationId) {
+            return res.status(400).json({ message: 'Chỉ chủ cửa hàng mới được tạo nhân viên' });
+        }
+
+        // Kiểm tra email trùng
+        const existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ message: 'Email này đã tồn tại' });
+
+        // Tạo user mới gắn với Organization của chủ
+        const newUser = new User({
+            email,
+            password, // Model sẽ tự hash
+            name,
+            role: 'nhanvien',
+            organizationId: owner.organizationId // <--- Gắn chung công ty
+        });
+
+        await newUser.save();
+
+        res.json({ message: 'Tạo nhân viên thành công', user: { email: newUser.email, name: newUser.name } });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};

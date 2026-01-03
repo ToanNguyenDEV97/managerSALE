@@ -1,6 +1,15 @@
 // server/middleware/validate.js
 const Joi = require('joi');
 
+const registerRequest = {
+  body: Joi.object().keys({
+    email: Joi.string().required().email().messages({
+      'string.empty': 'Email không được để trống',
+      'string.email': 'Email không hợp lệ'
+    }),
+  }),
+};
+
 const validate = (schema) => (req, res, next) => {
     // Pick: Chỉ lấy những trường được định nghĩa trong schema từ req.body
     // (Tránh việc user gửi thừa trường rác lên server)
@@ -32,4 +41,4 @@ const pick = (object, keys) => {
     }, {});
 };
 
-module.exports = validate;
+module.exports = registerRequest, validate;

@@ -15,7 +15,6 @@
     "joi": "^18.0.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.4.1",
-    "nodemailer": "^7.0.12",
-    "react-to-print": "^3.2.0"
+    "nodemailer": "^7.0.12"
   }
 }
