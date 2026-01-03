@@ -8,10 +8,10 @@ const authValidation = require('../validations/auth.validation');
 const { protect } = require('../middleware/authMiddleware'); // Import protect middleware
 
 // Áp dụng validate() trước khi vào controller
-router.post('/register-request', validate(authValidation.registerRequest), authController.registerRequest);
-router.post('/check-otp', validate(authValidation.checkOtp), authController.checkOtp);
-router.post('/register-verify', validate(authValidation.registerVerify), authController.registerVerify);
-router.post('/login', validate(authValidation.login), authController.login);
+router.post('/register-request', validate(authValidation.registerRequest), registerRequest);
+router.post('/check-otp', validate(authValidation.checkOtp), checkOtp);
+router.post('/register-verify', validate(authValidation.registerVerify), registerVerify);
+router.post('/login', validate(authValidation.login), login);
 
 // Riêng route này cần cả Login (protect) và Validate
 router.put('/profile', protect, validate(authValidation.updateProfile), async (req, res) => {
@@ -36,7 +36,7 @@ router.put('/profile', protect, validate(authValidation.updateProfile), async (r
 });
 
 // Đường dẫn thực tế sẽ là: GET /api/auth/me
-router.get('/me', protect, authController.getMe);
+router.get('/me', protect, getMe);
 
 router.post('/create-employee', protect, createEmployee); // Cần protect để biết ai đang gọi
 

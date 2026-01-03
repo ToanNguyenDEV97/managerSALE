@@ -41,4 +41,4 @@ const pick = (object, keys) => {
     }, {});
 };
 
-module.exports = registerRequest, validate;
+module.exports = validate;
