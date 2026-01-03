@@ -1,257 +1,198 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { 
-    FiHome, FiShoppingCart, FiUsers, FiBox, FiSettings, 
-    FiLogOut, FiFileText, FiTruck, FiClipboard, FiTrendingUp, 
-    FiDollarSign, FiShoppingBag, FiList, FiCheckSquare, 
-    FiBriefcase, FiShield, FiPercent, FiActivity,
-    FiChevronLeft, FiChevronRight, FiChevronDown, FiX, FiPieChart
-} from 'react-icons/fi';
+import { Link, useLocation } from 'react-router-dom';
 import { useAppContext } from '../../context/DataContext';
+import { 
+    FiHome, FiShoppingCart, FiBox, FiUsers, FiSettings, 
+    FiLogOut, FiChevronDown, FiChevronRight, FiFileText, 
+    FiTruck, FiPieChart, FiDollarSign, FiPercent
+} from 'react-icons/fi';
 
-// 1. CẤU HÌNH MENU
-interface MenuItem {
-    label: string;
-    icon?: any;
-    path?: string;
-    children?: MenuItem[];
-}
-
-const MENU_CONFIG: MenuItem[] = [
+// Định nghĩa cấu trúc Menu
+const MENU_ITEMS = [
     { 
-        label: 'Dashboard', 
+        type: 'link', 
         path: '/', 
-        icon: FiHome 
+        label: 'Tổng quan', 
+        icon: <FiHome /> 
+    },
+    { 
+        type: 'link', 
+        path: '/sales', 
+        label: 'Bán hàng (POS)', 
+        icon: <FiShoppingCart /> 
     },
     {
-        label: 'Kinh Doanh',
-        icon: FiShoppingCart,
+        type: 'group',
+        label: 'Giao dịch',
+        icon: <FiFileText />,
+        key: 'transactions',
         children: [
-            { label: 'Bán tại quầy (POS)', path: '/sales', icon: FiShoppingCart },
-            { label: 'Đơn đặt hàng', path: '/orders', icon: FiClipboard },
-            { label: 'Giao hàng', path: '/deliveries', icon: FiTruck },
-            { label: 'Lịch sử hóa đơn', path: '/invoices', icon: FiFileText },
-            { label: 'Báo giá', path: '/quotes', icon: FiBriefcase },
+            { path: '/orders', label: 'Đơn đặt hàng' },
+            { path: '/invoices', label: 'Hóa đơn' },
+            { path: '/deliveries', label: 'Vận chuyển' },
+            { path: '/quotes', label: 'Báo giá' },
         ]
     },
     {
-        label: 'Kho Hàng',
-        icon: FiBox,
+        type: 'group',
+        label: 'Kho hàng',
+        icon: <FiBox />,
+        key: 'inventory',
         children: [
-            { label: 'Sản phẩm', path: '/products', icon: FiBox },
-            { label: 'Nhập hàng', path: '/purchases', icon: FiShoppingBag },
-            { label: 'Kiểm kho', path: '/inventory-checks', icon: FiCheckSquare },
-            { label: 'Danh mục', path: '/categories', icon: FiList },
+            { path: '/products', label: 'Sản phẩm' },
+            { path: '/categories', label: 'Danh mục' },
+            { path: '/purchases', label: 'Nhập hàng' },
+            { path: '/inventory-checks', label: 'Kiểm kho' },
         ]
     },
     {
-        label: 'Đối Tác',
-        icon: FiUsers,
+        type: 'group',
+        label: 'Tài chính & Kế toán', // [MỚI] Tách nhóm này ra riêng
+        icon: <FiDollarSign />,
+        key: 'finance',
         children: [
-            { label: 'Khách hàng', path: '/customers', icon: FiUsers },
-            { label: 'Nhà cung cấp', path: '/suppliers', icon: FiBriefcase },
+            { path: '/cash-flow', label: 'Sổ quỹ' },
+            { path: '/taxes', label: 'Thuế & VAT' }, // Đảm bảo bạn đã có Route cho /taxes trong App.tsx
+            // { path: '/debt', label: 'Công nợ' }, // Có thể thêm nếu cần
         ]
     },
     {
-        label: 'Tài Chính & Thuế', // Đổi tên nhóm cho hợp lý
-        icon: FiDollarSign,
+        type: 'group',
+        label: 'Đối tác', // [SỬA] Chỉ còn Khách hàng & NCC
+        icon: <FiUsers />,
+        key: 'partners',
         children: [
-            { label: 'Sổ quỹ', path: '/cash-flow', icon: FiDollarSign },
-            { label: 'Công nợ', path: '/debt', icon: FiFileText },
-            { label: 'Thiết lập Thuế', path: '/tax', icon: FiPercent }, // Chuyển từ hệ thống sang
-            { label: 'Báo cáo Thuế', path: '/reports', icon: FiPieChart }, // Mục mới
-            { label: 'Báo cáo Doanh thu', path: '/reports', icon: FiTrendingUp },
+            { path: '/customers', label: 'Khách hàng' },
+            { path: '/suppliers', label: 'Nhà cung cấp' },
+        ]
+    },
+    {
+        type: 'group',
+        label: 'Hệ thống',
+        icon: <FiSettings />,
+        key: 'system',
+        children: [
+            { path: '/reports', label: 'Báo cáo', icon: <FiPieChart /> },
+            { path: '/users', label: 'Nhân viên' },
+            { path: '/settings', label: 'Cấu hình' },
         ]
     }
 ];
 
 const Sidebar: React.FC = () => {
-    const { isSidebarOpen, setIsSidebarOpen, logout, currentUser } = useAppContext();
+    const { isSidebarOpen, setIsSidebarOpen, logout } = useAppContext();
     const location = useLocation();
     
-    const [collapsed, setCollapsed] = useState(false);
-    const [activeGroup, setActiveGroup] = useState<string | null>(null);
+    // State lưu các nhóm đang mở
+    const [expandedMenus, setExpandedMenus] = useState<string[]>(['transactions']); 
 
-    // Tự động mở nhóm menu dựa trên URL hiện tại
-    useEffect(() => {
-        const currentGroup = MENU_CONFIG.find(group => 
-            group.children?.some(child => child.path && location.pathname.startsWith(child.path))
+    // Hàm kiểm tra link active
+    const isActive = (path: string) => location.pathname === path;
+    
+    // Hàm toggle nhóm menu (Đã sửa logic Accordion)
+    const toggleSubMenu = (key: string) => {
+        if (!isSidebarOpen) setIsSidebarOpen(true);
+        
+        // [LOGIC MỚI] Nếu bấm vào cái đang mở -> đóng lại ([]). 
+        // Nếu bấm cái mới -> đóng hết cái cũ và mở cái mới ([key]).
+        setExpandedMenus(prev => 
+            prev.includes(key) ? [] : [key]
         );
-        if (currentGroup) {
-            setActiveGroup(currentGroup.label);
-        } else if (location.pathname === '/') {
-            setActiveGroup(null);
-        }
-    }, [location.pathname]);
-
-    // Đóng sidebar trên mobile khi chuyển trang
-    useEffect(() => {
-        if (window.innerWidth < 1024 && isSidebarOpen) {
-            setIsSidebarOpen(false);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.pathname]);
-
-    const handleGroupClick = (label: string) => {
-        if (collapsed) setCollapsed(false);
-        setActiveGroup(prev => prev === label ? null : label);
     };
-
-    // Class style cho Link
-    const getLinkClass = (isActiveItem: boolean, isChild: boolean = false) => `
-        flex items-center w-full px-4 py-3 text-sm font-medium transition-all duration-200 rounded-lg mb-1 whitespace-nowrap overflow-hidden
-        ${isChild ? 'pl-8' : ''} 
-        ${isActiveItem 
-            ? 'bg-primary-50 text-primary-700 font-bold' 
-            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-        }
-    `;
 
     return (
         <>
-            {/* Overlay Mobile */}
             {isSidebarOpen && (
-                <div 
-                    className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
-                    onClick={() => setIsSidebarOpen(false)}
-                />
+                <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
             )}
 
-            <aside 
-                className={`
-                    fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200 shadow-2xl lg:shadow-none
-                    transition-all duration-300 ease-in-out flex flex-col
-                    ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-                    ${collapsed ? 'lg:w-20' : 'lg:w-64'}
-                    w-64
-                `}
-            >
-                {/* 1. LOGO */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-slate-100 flex-shrink-0">
-                    <div className={`flex items-center gap-2 transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>
-                        <div className="bg-primary-600 text-white p-1.5 rounded-lg shadow-sm">
-                            <FiShoppingCart className="w-6 h-6" />
-                        </div>
-                        <span className="text-xl font-bold text-slate-800 tracking-tight whitespace-nowrap">ManagerSALE</span>
+            <aside className={`fixed top-0 left-0 z-30 h-screen bg-white border-r border-slate-200 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+                
+                {/* Logo */}
+                <div className="h-16 flex items-center justify-center border-b border-slate-100 shrink-0">
+                    <div className="font-bold text-2xl text-blue-600 tracking-tighter">
+                        {isSidebarOpen ? 'ManagerSALE' : 'MS'}
                     </div>
-                    {/* Logo Mini */}
-                    <div className={`absolute left-1/2 -translate-x-1/2 transition-all duration-300 ${collapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`}>
-                        <div className="bg-primary-600 text-white p-2 rounded-lg font-bold">M</div>
-                    </div>
-                    <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
-                        <FiX className="w-6 h-6" />
-                    </button>
                 </div>
 
-                {/* 2. MENU LIST */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar py-4 px-3 space-y-1">
-                    {MENU_CONFIG.map((item, index) => {
-                        // MENU CẤP 1 (KHÔNG CÓ CON)
-                        if (!item.children) {
-                            const isActiveItem = item.path === '/' 
-                                ? location.pathname === '/' 
-                                : location.pathname.startsWith(item.path || '');
-                            
+                {/* Menu List */}
+                <nav className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+                    {MENU_ITEMS.map((item: any, index) => {
+                        // ITEM ĐƠN LẺ
+                        if (item.type === 'link') {
                             return (
-                                <NavLink 
-                                    key={index} 
-                                    to={item.path || '#'} 
-                                    className={getLinkClass(isActiveItem)}
-                                    title={collapsed ? item.label : ''}
+                                <Link
+                                    key={index}
+                                    to={item.path}
+                                    onClick={() => setExpandedMenus([])} // Bấm vào link đơn thì đóng các accordion
+                                    className={`flex items-center px-3 py-3 rounded-xl transition-all font-medium ${
+                                        isActive(item.path) 
+                                        ? 'bg-blue-50 text-blue-600' 
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                    }`}
+                                    title={!isSidebarOpen ? item.label : ''}
                                 >
-                                    {item.icon && <item.icon className={`flex-shrink-0 w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-3'}`} />}
-                                    <span className={collapsed ? 'hidden' : 'block'}>{item.label}</span>
-                                </NavLink>
+                                    <span className="text-xl shrink-0">{item.icon}</span>
+                                    {isSidebarOpen && <span className="ml-3 truncate">{item.label}</span>}
+                                </Link>
                             );
                         }
 
-                        // MENU CẤP 1 (CÓ CON - ACCORDION)
-                        const isOpen = activeGroup === item.label;
-                        const isChildActive = item.children.some(child => location.pathname.startsWith(child.path || ''));
+                        // NHÓM MENU (GROUP)
+                        const isExpanded = expandedMenus.includes(item.key);
+                        const hasActiveChild = item.children.some((child: any) => isActive(child.path));
 
                         return (
-                            <div key={index} className="group">
+                            <div key={index} className="space-y-1">
                                 <button
-                                    onClick={() => handleGroupClick(item.label)}
-                                    className={`
-                                        flex items-center justify-between w-full px-4 py-3 text-sm font-medium transition-all duration-200 rounded-lg mb-1
-                                        ${isOpen || isChildActive ? 'text-primary-700 bg-slate-50' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                                    `}
-                                    title={collapsed ? item.label : ''}
+                                    onClick={() => toggleSubMenu(item.key)}
+                                    className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all font-medium ${
+                                        hasActiveChild ? 'bg-slate-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                    title={!isSidebarOpen ? item.label : ''}
                                 >
-                                    <div className="flex items-center">
-                                        {item.icon && <item.icon className={`flex-shrink-0 w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-3'} ${isChildActive ? 'text-primary-600' : ''}`} />}
-                                        <span className={collapsed ? 'hidden' : 'block'}>{item.label}</span>
+                                    <div className="flex items-center overflow-hidden">
+                                        <span className={`text-xl shrink-0 ${hasActiveChild ? 'text-blue-600' : ''}`}>{item.icon}</span>
+                                        {isSidebarOpen && <span className="ml-3 truncate">{item.label}</span>}
                                     </div>
-                                    {!collapsed && (
-                                        <FiChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                                    {isSidebarOpen && (
+                                        <span className="text-slate-400">
+                                            {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
+                                        </span>
                                     )}
                                 </button>
 
-                                {/* DANH SÁCH MENU CON */}
-                                <div 
-                                    className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen && !collapsed ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}
-                                >
-                                    {item.children.map((child, cIndex) => (
-                                        <NavLink
-                                            key={cIndex}
-                                            to={child.path || '#'}
-                                            className={({ isActive }) => getLinkClass(isActive, true)}
-                                        >
-                                            {/* SỬ DỤNG ICON THAY VÌ DẤU CHẤM */}
-                                            {child.icon ? (
-                                                <child.icon className="w-4 h-4 mr-3 opacity-70" />
-                                            ) : (
-                                                <span className="w-4 h-4 mr-3" /> // Placeholder nếu không có icon
-                                            )}
-                                            {child.label}
-                                        </NavLink>
-                                    ))}
-                                </div>
+                                {/* Sub-menu Items */}
+                                {isSidebarOpen && isExpanded && (
+                                    <div className="pl-10 space-y-1 animate-slide-down">
+                                        {item.children.map((child: any, childIdx: number) => (
+                                            <Link
+                                                key={childIdx}
+                                                to={child.path}
+                                                className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
+                                                    isActive(child.path)
+                                                    ? 'text-blue-600 font-semibold bg-blue-50/50'
+                                                    : 'text-slate-500 hover:text-slate-800'
+                                                }`}
+                                            >
+                                                {child.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
+                </nav>
 
-                    {/* MENU HỆ THỐNG RIÊNG (ADMIN ONLY) */}
-                    {currentUser?.role === 'owner' && (
-                        <>
-                            <div className={`mt-6 mb-2 px-4 text-xs font-bold text-slate-400 uppercase tracking-wider ${collapsed ? 'hidden' : 'block'}`}>
-                                Hệ Thống
-                            </div>
-                            
-                            <NavLink to="/users" className={getLinkClass(location.pathname.startsWith('/users'))} title="Nhân viên">
-                                <FiShield className={`flex-shrink-0 w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-3'}`} />
-                                <span className={collapsed ? 'hidden' : 'block'}>Nhân viên</span>
-                            </NavLink>
-                            <NavLink to="/settings" className={getLinkClass(location.pathname.startsWith('/settings'))} title="Cấu hình">
-                                <FiSettings className={`flex-shrink-0 w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-3'}`} />
-                                <span className={collapsed ? 'hidden' : 'block'}>Cấu hình</span>
-                            </NavLink>
-                        </>
-                    )}
-                </div>
-
-                {/* 3. FOOTER */}
-                <div className="p-4 border-t border-slate-100 bg-slate-50 flex-shrink-0">
-                    <button 
-                        onClick={() => setCollapsed(!collapsed)}
-                        className="hidden lg:flex items-center justify-center w-full px-4 py-2 text-sm text-slate-500 hover:bg-white hover:text-primary-600 hover:shadow-sm rounded-lg transition-all border border-transparent hover:border-slate-200 mb-2"
-                    >
-                        {collapsed ? <FiChevronRight className="w-5 h-5" /> : (
-                            <>
-                                <FiChevronLeft className="w-5 h-5 mr-2" />
-                                <span className="font-medium">Thu gọn</span>
-                            </>
-                        )}
-                    </button>
-
-                    <button 
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-100 shrink-0">
+                    <button
                         onClick={logout}
-                        className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-100 hover:bg-red-50 transition-colors rounded-lg group"
-                        title="Đăng xuất"
+                        className={`w-full flex items-center px-3 py-2 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors ${!isSidebarOpen && 'justify-center'}`}
                     >
-                        <FiLogOut className={`w-5 h-5 ${collapsed ? '' : 'mr-2'} group-hover:-translate-x-1 transition-transform`} />
-                        <span className={collapsed ? 'hidden' : 'block'}>Đăng xuất</span>
+                        <FiLogOut className="text-xl shrink-0" />
+                        {isSidebarOpen && <span className="ml-3 font-medium">Đăng xuất</span>}
                     </button>
                 </div>
             </aside>

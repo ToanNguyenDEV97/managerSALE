@@ -1,41 +1,27 @@
 import React, { useState } from 'react';
-import { FiPlus, FiEdit, FiTrash2, FiLoader, FiSearch, FiTruck } from 'react-icons/fi';
-import { useSuppliers, useDeleteSupplier } from '../hooks/useSuppliers';
-import toast from 'react-hot-toast';
-
-// Import Components chuẩn
+import { FiPlus, FiSearch, FiEdit, FiTrash2, FiPhone, FiGlobe, FiTruck, FiMapPin } from 'react-icons/fi';
+import { Button } from '../components/common/Button';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import { FormInput } from '../components/common/FormInput'; // Tận dụng UI Input
-import SupplierModal from '../components/features/partners/SupplierModal'; // Đường dẫn đúng theo cấu trúc mới
-
-// Định nghĩa kiểu dữ liệu (Nếu chưa có file types chung)
-interface Supplier {
-    _id: string; // Hoặc id tùy vào backend trả về
-    id?: string;
-    name: string;
-    phone: string;
-    address: string;
-    debt?: number;
-    email?: string;
-    contactPerson?: string;
-}
+import SupplierModal from '../components/features/partners/SupplierModal';
+import { useSuppliers, useDeleteSupplier } from '../hooks/useSuppliers';
+import { useDebounce } from '../hooks/useDebounce'; // [1] Import Hook chống spam
+import { toast } from 'react-hot-toast';
 
 const SuppliersPage: React.FC = () => {
-    // --- STATE QUẢN LÝ ---
+    // State quản lý trang và tìm kiếm
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // State cho Modal Thêm/Sửa
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedSupplier, setSelectedSupplier] = useState<Supplier | undefined>(undefined);
+    // [2] Tạo biến tìm kiếm "chậm" (đợi 0.5s sau khi gõ mới tìm)
+    const debouncedSearch = useDebounce(searchTerm, 500);
 
-    // State cho Modal Xóa
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingSupplier, setEditingSupplier] = useState<any>(null);
     const [deleteId, setDeleteId] = useState<string | null>(null);
 
-    // --- HOOKS ---
-    // Giả sử hook useSuppliers hỗ trợ tham số search
-    const { data: suppliersData, isLoading, refetch } = useSuppliers(page, 10, searchTerm);
+    // [3] Gọi Hook lấy dữ liệu (Sử dụng debouncedSearch thay vì searchTerm)
+    const { data: suppliersData, isLoading } = useSuppliers(page, 10, debouncedSearch);
     
     const suppliers = suppliersData?.data || [];
     const totalPages = suppliersData?.totalPages || 1;
@@ -43,136 +29,132 @@ const SuppliersPage: React.FC = () => {
 
     const deleteMutation = useDeleteSupplier();
 
-    // --- HANDLERS ---
-    
-    // Mở modal thêm mới
+    // Handlers
     const handleAdd = () => {
-        setSelectedSupplier(undefined); // Reset data
+        setEditingSupplier(null);
         setIsModalOpen(true);
     };
 
-    // Mở modal sửa
-    const handleEdit = (supplier: Supplier) => {
-        setSelectedSupplier(supplier);
+    const handleEdit = (supplier: any) => {
+        setEditingSupplier(supplier);
         setIsModalOpen(true);
     };
 
-    // Xử lý xóa
     const handleDelete = async () => {
         if (deleteId) {
             try {
                 await deleteMutation.mutateAsync(deleteId);
                 toast.success('Đã xóa nhà cung cấp');
                 setDeleteId(null);
-                refetch(); // Tải lại danh sách
             } catch (error) {
-                toast.error('Lỗi khi xóa nhà cung cấp');
+                toast.error('Không thể xóa (Có thể đang có phiếu nhập liên quan)');
             }
         }
     };
 
-    // Callback khi modal thêm/sửa thành công
-    const handleModalSuccess = () => {
-        setIsModalOpen(false);
-        refetch(); // Reload data
-    };
-
     return (
-        <div className="p-6 space-y-6 animate-fade-in">
-            {/* --- HEADER & TOOLBAR --- */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div className="space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                        <FiTruck className="text-primary-600"/> Quản Lý Nhà Cung Cấp
-                    </h1>
-                    <p className="text-slate-500 text-sm mt-1">Theo dõi danh sách và công nợ nhà cung cấp</p>
+                    <h2 className="text-xl font-bold text-slate-800">Nhà Cung Cấp</h2>
+                    <p className="text-sm text-slate-500">Quản lý đối tác và công nợ phải trả</p>
                 </div>
                 
-                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    {/* Ô tìm kiếm */}
+                <div className="flex gap-3 w-full md:w-auto">
                     <div className="relative">
-                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input 
                             type="text" 
-                            placeholder="Tìm tên, SĐT..." 
-                            className="pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 w-full sm:w-64"
+                            placeholder="Tìm tên, SĐT, Mã số thuế..." 
+                            className="w-full md:w-64 pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-200 outline-none transition-all"
                             value={searchTerm}
                             onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                         />
                     </div>
-
-                    {/* Nút thêm mới */}
-                    <button 
-                        onClick={handleAdd} 
-                        className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary-200 flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                        <FiPlus size={20}/> Thêm Mới
-                    </button>
+                    <Button icon={<FiPlus />} onClick={handleAdd}>
+                        Thêm mới
+                    </Button>
                 </div>
             </div>
 
-            {/* --- TABLE CONTENT --- */}
+            {/* Table */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
+                    <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50">
                             <tr>
-                                <th className="px-6 py-4">Tên Nhà Cung Cấp</th>
-                                <th className="px-6 py-4">Liên Hệ</th>
-                                <th className="px-6 py-4">Địa Chỉ</th>
-                                <th className="px-6 py-4 text-right">Công Nợ</th>
-                                <th className="px-6 py-4 text-center">Thao Tác</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase">Nhà cung cấp</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase">Thông tin liên hệ</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase">Phân loại</th>
+                                <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase">Nợ phải trả</th>
+                                <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase">Thao tác</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-slate-200 bg-white">
                             {isLoading ? (
-                                <tr>
-                                    <td colSpan={5} className="py-10 text-center text-slate-500">
-                                        <div className="flex justify-center items-center gap-2">
-                                            <FiLoader className="animate-spin text-primary-600" size={24}/> Đang tải dữ liệu...
-                                        </div>
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={5} className="text-center py-10">Đang tải dữ liệu...</td></tr>
                             ) : suppliers.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="py-10 text-center text-slate-500 italic">
-                                        Không tìm thấy nhà cung cấp nào.
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={5} className="text-center py-10 text-slate-500 italic">Chưa có nhà cung cấp nào.</td></tr>
                             ) : (
-                                suppliers.map((item: any) => (
-                                    <tr key={item._id || item.id} className="hover:bg-slate-50 transition-colors group">
+                                suppliers.map((s: any) => (
+                                    <tr key={s.id || Math.random()} className="hover:bg-slate-50 transition-colors group">
                                         <td className="px-6 py-4">
-                                            <div className="font-bold text-slate-800">{item.name}</div>
-                                            {item.contactPerson && <div className="text-xs text-slate-500">LH: {item.contactPerson}</div>}
+                                            <div className="flex items-center">
+                                                <div className="w-10 h-10 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center mr-3 border border-orange-100">
+                                                    <FiTruck size={18} />
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-slate-900">{s.name}</div>
+                                                    {s.taxCode ? (
+                                                        <div className="text-xs text-slate-500 mt-0.5">MST: {s.taxCode}</div>
+                                                    ) : (
+                                                        <div className="text-xs text-slate-400 mt-0.5 flex items-center"><FiMapPin size={10} className="mr-1"/> {s.address || '---'}</div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="text-slate-700 font-medium">{item.phone}</div>
-                                            <div className="text-xs text-slate-400">{item.email}</div>
+                                            <div className="flex flex-col text-sm">
+                                                <span className="flex items-center gap-2 text-slate-700">
+                                                    <FiPhone size={14} className="text-slate-400"/> {s.phone || '---'}
+                                                </span>
+                                                {s.website && (
+                                                    <a href={s.website} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-blue-500 hover:underline mt-1">
+                                                        <FiGlobe size={14}/> {s.website.replace(/^https?:\/\//, '')}
+                                                    </a>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4 text-slate-600 truncate max-w-xs" title={item.address}>
-                                            {item.address || '---'}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <span className={`font-bold ${(item.debt || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                                {(item.debt || 0).toLocaleString()} ₫
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                                s.group === 'Chính hãng' 
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                                            }`}>
+                                                {s.group || 'Chính hãng'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <td className="px-6 py-4 text-right">
+                                            <span className={`font-bold ${s.debt > 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                                                {s.debt ? s.debt.toLocaleString() : '0'} đ
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button 
-                                                    onClick={() => handleEdit(item)}
-                                                    className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                                                    title="Chỉnh sửa"
+                                                    onClick={() => handleEdit(s)}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Sửa thông tin"
                                                 >
-                                                    <FiEdit size={18} />
+                                                    <FiEdit size={16} />
                                                 </button>
                                                 <button 
-                                                    onClick={() => setDeleteId(item._id || item.id)}
-                                                    className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                                                    title="Xóa"
+                                                    onClick={() => setDeleteId(s.id)}
+                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Xóa nhà cung cấp"
                                                 >
-                                                    <FiTrash2 size={18} />
+                                                    <FiTrash2 size={16} />
                                                 </button>
                                             </div>
                                         </td>
@@ -183,41 +165,35 @@ const SuppliersPage: React.FC = () => {
                     </table>
                 </div>
                 
-                {/* Pagination */}
-                {!isLoading && suppliers.length > 0 && (
+                <div className="border-t border-slate-200 bg-slate-50/50">
                     <Pagination 
                         currentPage={page} 
                         totalPages={totalPages} 
                         onPageChange={setPage} 
-                        totalItems={totalItems}
+                        totalItems={totalItems} 
+                        itemsPerPage={10} 
                     />
-                )}
+                </div>
             </div>
 
-            {/* --- MODALS --- */}
-            
-            {/* Modal Thêm/Sửa */}
-            {isModalOpen && (
-                <SupplierModal 
-                    supplier={selectedSupplier}
-                    onClose={() => setIsModalOpen(false)}
-                    onSuccess={handleModalSuccess}
-                />
-            )}
+            {/* Modals */}
+            <SupplierModal 
+                isOpen={isModalOpen} 
+                onClose={() => setIsModalOpen(false)} 
+                editingSupplier={editingSupplier} 
+            />
 
-            {/* Modal Xóa */}
-            {deleteId && (
-                <ConfirmationModal 
-                    isOpen={!!deleteId} 
-                    onClose={() => setDeleteId(null)} 
-                    onConfirm={handleDelete} 
-                    title="Xóa Nhà Cung Cấp"
-                    type="danger"
-                >
-                    <p>Bạn có chắc chắn muốn xóa nhà cung cấp này?</p>
-                    <p className="text-sm text-slate-500 mt-2">Hành động này không thể hoàn tác và có thể ảnh hưởng đến lịch sử nhập hàng.</p>
-                </ConfirmationModal>
-            )}
+            <ConfirmationModal 
+                isOpen={!!deleteId} 
+                onClose={() => setDeleteId(null)} 
+                onConfirm={handleDelete}
+                title="Xóa Nhà Cung Cấp"
+            >
+                Bạn có chắc chắn muốn xóa đối tác này? 
+                <p className="mt-2 text-sm text-red-500 bg-red-50 p-2 rounded border border-red-100">
+                    ⚠️ Lưu ý: Nếu đã có lịch sử nhập hàng, hệ thống sẽ chặn việc xóa để bảo toàn dữ liệu kế toán.
+                </p>
+            </ConfirmationModal>
         </div>
     );
 };

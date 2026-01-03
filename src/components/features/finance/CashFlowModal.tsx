@@ -1,118 +1,114 @@
+// src/components/features/finance/CashFlowModal.tsx
 import React, { useState } from 'react';
-import { FiX, FiSave } from 'react-icons/fi';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { api } from '../utils/api'; // Đảm bảo đường dẫn đúng
-import toast from 'react-hot-toast';
+import BaseModal from '../../common/BaseModal';
+import { FormInput } from '../../common/FormInput';
+import { Button } from '../../common/Button';
+import { useCreateCashFlow } from '../../../hooks/useCashFlow'; // Custom hook tạo phiếu
+import { FiSave } from 'react-icons/fi';
+import { toast } from 'react-hot-toast';
 
 interface CashFlowModalProps {
     isOpen: boolean;
     onClose: () => void;
+    type: 'income' | 'expense';
 }
 
-const CashFlowModal: React.FC<CashFlowModalProps> = ({ isOpen, onClose }) => {
-    const queryClient = useQueryClient();
+const CashFlowModal: React.FC<CashFlowModalProps> = ({ isOpen, onClose, type }) => {
+    const createMutation = useCreateCashFlow();
     
-    // State form
-    const [type, setType] = useState<'thu' | 'chi'>('thu');
-    const [amount, setAmount] = useState<number>(0);
-    const [description, setDescription] = useState('');
-    const [payerReceiverName, setPayerReceiverName] = useState(''); // Người nộp/nhận
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-
-    // Hook tạo phiếu (Gọi API có sẵn trong server.js)
-    const createMutation = useMutation({
-        mutationFn: (data: any) => api('/api/cashflow-transactions', { 
-            method: 'POST', 
-            body: JSON.stringify(data) 
-        }),
-        onSuccess: () => {
-            queryClient.invalidateQueries(['cashflow'] as any);
-            toast.success(`Đã lập phiếu ${type === 'thu' ? 'Thu' : 'Chi'} thành công!`);
-            onClose();
-            // Reset form
-            setAmount(0); setDescription(''); setPayerReceiverName('');
-        },
-        onError: (err: any) => toast.error(err.message)
+    const [formData, setFormData] = useState({
+        amount: 0,
+        date: new Date().toISOString().split('T')[0],
+        description: '',
+        partnerName: '', // Có thể nâng cấp thành Select Customer/Supplier sau
+        referenceDoc: '' // Mã đơn hàng/hóa đơn liên quan
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (amount <= 0) return toast.error("Số tiền phải lớn hơn 0");
-        if (!description) return toast.error("Vui lòng nhập lý do");
-
-        // Gửi dữ liệu lên Server
-        createMutation.mutate({
-            type, // 'thu' hoặc 'chi'
-            amount,
-            date,
-            description,
-            payerReceiverName,
-            category: 'Khác', // Mặc định là Khác
-            transactionNumber: `${type === 'thu' ? 'PT' : 'PC'}-${Date.now().toString().slice(-6)}` // Tạm thời sinh mã random, Server sẽ tự sinh mã chuẩn sau nếu bạn cấu hình
-        });
+        try {
+            await createMutation.mutateAsync({
+                ...formData,
+                type: type
+            });
+            toast.success(`Đã lập phiếu ${type === 'income' ? 'Thu' : 'Chi'} thành công!`);
+            onClose();
+            // Reset form
+            setFormData({ amount: 0, date: new Date().toISOString().split('T')[0], description: '', partnerName: '', referenceDoc: '' });
+        } catch (error: any) {
+            toast.error('Lỗi: ' + error.message);
+        }
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
-                
-                {/* Header */}
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Lập Phiếu Thu / Chi</h3>
-                    <button onClick={onClose}><FiX size={24} className="text-slate-500" /></button>
+        <BaseModal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={type === 'income' ? 'Lập Phiếu Thu Tiền' : 'Lập Phiếu Chi Tiền'}
+            size="md"
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Số tiền nổi bật */}
+                <div className={`p-4 rounded-xl border ${type === 'income' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                    <label className={`block text-sm font-bold mb-1 ${type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                        Số tiền {type === 'income' ? 'thu vào' : 'chi ra'}
+                    </label>
+                    <input 
+                        type="number" 
+                        autoFocus
+                        className={`w-full text-3xl font-bold bg-transparent outline-none ${type === 'income' ? 'text-green-600' : 'text-red-600'}`}
+                        value={formData.amount}
+                        onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
+                        placeholder="0"
+                    />
                 </div>
 
-                {/* Body */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {/* Loại phiếu (Tab) */}
-                    <div className="flex p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                        <button
-                            type="button"
-                            onClick={() => setType('thu')}
-                            className={`flex-1 py-2 rounded-md font-bold transition-all ${type === 'thu' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
-                        >
-                            Phiếu Thu (Tiền vào)
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setType('chi')}
-                            className={`flex-1 py-2 rounded-md font-bold transition-all ${type === 'chi' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
-                        >
-                            Phiếu Chi (Tiền ra)
-                        </button>
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <FormInput 
+                        label="Ngày chứng từ" 
+                        type="date" 
+                        value={formData.date}
+                        onChange={e => setFormData({...formData, date: e.target.value})}
+                        required
+                    />
+                    <FormInput 
+                        label="Người nộp/nhận" 
+                        placeholder="VD: Khách hàng A, NCC B..."
+                        value={formData.partnerName}
+                        onChange={e => setFormData({...formData, partnerName: e.target.value})}
+                    />
+                </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Ngày lập</label>
-                            <input type="date" required className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" value={date} onChange={e => setDate(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Số tiền (VNĐ)</label>
-                            <input type="number" required className="w-full border p-2 rounded font-bold text-lg dark:bg-slate-700 dark:border-slate-600" value={amount} onChange={e => setAmount(Number(e.target.value))} />
-                        </div>
-                    </div>
+                <FormInput 
+                    label="Lý do / Diễn giải" 
+                    placeholder="VD: Thu tiền bán hàng ngày 20/10..."
+                    value={formData.description}
+                    onChange={e => setFormData({...formData, description: e.target.value})}
+                    required
+                />
 
-                    <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-slate-300">{type === 'thu' ? 'Người nộp tiền' : 'Người nhận tiền'}</label>
-                        <input type="text" className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" placeholder="VD: Nguyễn Văn A" value={payerReceiverName} onChange={e => setPayerReceiverName(e.target.value)} />
-                    </div>
+                <FormInput 
+                    label="Tham chiếu (Mã đơn/Hóa đơn)" 
+                    placeholder="VD: DH001, HD002 (Không bắt buộc)"
+                    value={formData.referenceDoc}
+                    onChange={e => setFormData({...formData, referenceDoc: e.target.value})}
+                />
 
-                    <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-slate-300">Lý do / Diễn giải</label>
-                        <textarea required className="w-full border p-2 rounded dark:bg-slate-700 dark:border-slate-600" rows={3} placeholder="VD: Trả tiền điện tháng 12..." value={description} onChange={e => setDescription(e.target.value)} />
-                    </div>
-
-                    <div className="pt-2">
-                        <button type="submit" className={`w-full py-3 text-white font-bold rounded-lg flex justify-center items-center gap-2 ${type === 'thu' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                            <FiSave /> {type === 'thu' ? 'Lưu Phiếu Thu' : 'Lưu Phiếu Chi'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+                    <Button type="button" variant="secondary" onClick={onClose}>
+                        Hủy
+                    </Button>
+                    <Button 
+                        type="submit" 
+                        variant={type === 'income' ? 'primary' : 'danger'}
+                        icon={<FiSave />}
+                        isLoading={createMutation.isPending}
+                    >
+                        Lưu phiếu
+                    </Button>
+                </div>
+            </form>
+        </BaseModal>
     );
 };
 

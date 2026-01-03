@@ -1,67 +1,49 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../utils/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'; //
+import { api } from '../utils/api'; //
 
-// 1. Lấy danh sách Nhà cung cấp
-export const useSuppliers = (page: number = 1, limit: number = 1000) => {
+// 1. Hook lấy danh sách NCC (Sử dụng React Query để cache và auto-fetch)
+export const useSuppliers = (page: number, limit: number, search: string) => {
     return useQuery({
-        queryKey: ['suppliers', page, limit],
-        queryFn: () => api(`/api/suppliers?page=${page}&limit=${limit}`),
-        keepPreviousData: true,
-    } as any);
-};
-
-// 2. Lấy chi tiết 1 Nhà cung cấp
-export const useSupplier = (id: string) => {
-    return useQuery({
-        queryKey: ['supplier', id],
-        queryFn: () => api(`/api/suppliers/${id}`),
-        enabled: !!id,
+        queryKey: ['suppliers', page, limit, search],
+        queryFn: async () => {
+            const endpoint = `/api/suppliers?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`;
+            return await api(endpoint);
+        },
+        staleTime: 5000, // Giữ data trong 5s không gọi lại
+        retry: 1,        // Chỉ thử lại 1 lần nếu lỗi mạng
     });
 };
 
-// 3. Tạo mới (Quan trọng: Hàm này đang thiếu dẫn đến lỗi)
+// 2. Hook tạo mới NCC
 export const useCreateSupplier = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (data: any) => {
-            return api('/api/suppliers', {
-                method: 'POST',
-                body: JSON.stringify(data),
-            });
-        },
+        mutationFn: (data: any) => api('/api/suppliers', { method: 'POST', body: JSON.stringify(data) }),
         onSuccess: () => {
-            queryClient.invalidateQueries(['suppliers'] as any);
-        },
+            queryClient.invalidateQueries({ queryKey: ['suppliers'] }); // Làm mới danh sách ngay lập tức
+        }
     });
 };
 
-// 4. Cập nhật
+// 3. Hook cập nhật NCC
 export const useUpdateSupplier = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (data: any) => {
-            return api(`/api/suppliers/${data.id}`, {
-                method: 'PUT',
-                body: JSON.stringify(data),
-            });
-        },
+        mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) => 
+            api(`/api/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
         onSuccess: () => {
-            queryClient.invalidateQueries(['suppliers'] as any);
-        },
+            queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        }
     });
 };
 
-// 5. Xóa
+// 4. Hook xóa NCC
 export const useDeleteSupplier = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (id: string) => {
-            return api(`/api/suppliers/${id}`, {
-                method: 'DELETE',
-            });
-        },
+        mutationFn: (id: string) => api(`/api/suppliers/${id}`, { method: 'DELETE' }),
         onSuccess: () => {
-            queryClient.invalidateQueries(['suppliers'] as any);
-        },
+            queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        }
     });
 };
