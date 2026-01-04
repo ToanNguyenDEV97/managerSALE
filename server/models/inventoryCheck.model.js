@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const { INVENTORY_CHECK_STATUS } = require('../utils/constants'); // Import
+
 const inventoryCheckItemSchema = new Schema({
     productId: { type: String, required: true },
     productName: { type: String, required: true },
@@ -16,7 +18,7 @@ const inventoryCheckSchema = new Schema({
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     checkNumber: { type: String, required: true }, // Bỏ unique ở đây
     checkDate: { type: String, required: true },
-    status: { type: String, required: true, enum: ['Nháp', 'Hoàn thành'], default: 'Nháp' },
+    status: { type: String, required: true, enum: Object.values(INVENTORY_CHECK_STATUS), default: INVENTORY_CHECK_STATUS.DRAFT },
     items: [inventoryCheckItemSchema],
     notes: { type: String },
 }, {

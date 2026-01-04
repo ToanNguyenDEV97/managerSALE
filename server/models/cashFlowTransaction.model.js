@@ -1,16 +1,18 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const { CASHFLOW } = require('../utils/constants'); // Sử dụng hằng số từ constants.js
+
 const cashFlowTransactionSchema = new Schema({
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     transactionNumber: { type: String, required: true }, // Bỏ unique ở đây
-    type: { type: String, required: true, enum: ['thu', 'chi'] },
+    type: { type: String, required: true, enum: Object.values(CASHFLOW.TYPE) },
     date: { type: String, required: true },
     amount: { type: Number, required: true },
     description: { type: String, required: true },
     payerReceiverName: { type: String },
     payerReceiverAddress: { type: String },
-    category: { type: String, enum: ['Chi phí hoạt động', 'Trả NCC', 'Lương', 'Thu nợ khách hàng', 'Khác', 'Chênh lệch kho', 'Doanh thu bán hàng'] },
+    category: { type: String, enum: Object.values(CASHFLOW.CATEGORY) },
     inputVat: { type: Number, default: 0 },
 }, {
     timestamps: true

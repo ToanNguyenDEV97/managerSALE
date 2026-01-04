@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const { DELIVERY_STATUS } = require('../utils/constants'); // Import
+
 const deliverySchema = new Schema({
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     deliveryNumber: { type: String, required: true }, // Bỏ unique ở đây
@@ -13,7 +15,7 @@ const deliverySchema = new Schema({
     deliveryDate: { type: String, required: true },
     driverName: { type: String },
     vehicleNumber: { type: String },
-    status: { type: String, required: true, enum: ['Chờ giao', 'Đang giao', 'Đã giao thành công', 'Giao thất bại'], default: 'Chờ giao' },
+    status: { type: String, required: true, enum: Object.values(DELIVERY_STATUS), default: DELIVERY_STATUS.PENDING },
     notes: { type: String },
 }, {
     timestamps: true

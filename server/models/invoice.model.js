@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const { INVOICE_STATUS } = require('../utils/constants');
+
 const invoiceItemSchema = new Schema({
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true }, // Chuẩn hóa ObjectId
     name: { type: String, required: true },
@@ -24,8 +26,8 @@ const invoiceSchema = new Schema({
     paidAmount: { type: Number, required: true, default: 0 }, // Khách đã trả
     
     paymentMethod: { type: String, enum: ['Tiền mặt', 'Chuyển khoản', 'Công nợ', 'Khác'], default: 'Tiền mặt' }, // [MỚI]
-    status: { type: String, required: true, enum: ['Chưa thanh toán', 'Đã thanh toán', 'Thanh toán một phần', 'Hủy', 'Hoàn trả'], default: 'Chưa thanh toán' },
-    
+    status: { type: String, required: true, enum: Object.values(INVOICE_STATUS), default: INVOICE_STATUS.UNPAID },
+
     note: String,
     orderId: { type: String },
     isDelivery: { type: Boolean, default: false },

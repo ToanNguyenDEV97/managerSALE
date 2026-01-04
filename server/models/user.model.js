@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { Schema } = mongoose;
 
+const { USER_ROLES } = require('../utils/constants'); // Sử dụng hằng số từ constants.js
+
 const userSchema = new Schema({
     email: {
         type: String,
@@ -16,9 +18,9 @@ const userSchema = new Schema({
     name: { type: String, trim: true },
     role: {
         type: String,
-        enum: ['owner', 'nhanvien'], 
-        default: 'nhanvien'
-    },
+        enum: Object.values(USER_ROLES), 
+        default: USER_ROLES.STAFF
+    },  
     organizationId: { 
         type: Schema.Types.ObjectId, 
         ref: 'Organization',

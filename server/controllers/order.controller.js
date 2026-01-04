@@ -5,7 +5,7 @@ const Product = require('../models/product.model'); // Phải import Product
 const Invoice = require('../models/invoice.model');
 const Quote = require('../models/quote.model');
 const { getNextSequence } = require('../utils/sequence');
-const { PREFIXES } = require('../utils/constants');
+const { PREFIXES, ORDER_STATUS } = require('../utils/constants');
 
 // 1. Lấy danh sách Order
 exports.getOrders = async (req, res) => {
@@ -101,14 +101,14 @@ exports.createOrder = async (req, res) => {
             totalAmount: finalTotal,
             depositAmount: paymentAmount || 0, // Tiền cọc
             paidAmount: paymentAmount || 0,    // Tạm tính là đã trả (cọc)
-            status: 'Mới',
+            status: ORDER_STATUS.NEW,
             note,
             isDelivery: deliveryInfo?.isDelivery || false,
             delivery: deliveryInfo?.isDelivery ? {
                 address: deliveryInfo.address,
                 phone: deliveryInfo.phone,
                 shipFee: shipFee,
-                status: 'Chờ giao'
+                status: ORDER_STATUS.PENDING
             } : undefined
         });
 
@@ -159,7 +159,7 @@ exports.convertOrderToInvoice = async (req, res) => {
             discountAmount: 0, // Tạm tính
             finalAmount: order.totalAmount, // Tạm tính
             paidAmount: order.depositAmount || 0, // Chuyển cọc sang đã thanh toán
-            status: 'Chưa thanh toán',
+            status: ORDER_STATUS.PAID,
             issueDate: new Date(),
             note: `Chuyển từ đơn hàng #${order.orderNumber}`
         });
@@ -167,7 +167,7 @@ exports.convertOrderToInvoice = async (req, res) => {
         await newInvoice.save({ session });
 
         // Cập nhật Order -> Hoàn thành
-        order.status = 'Hoàn thành';
+        order.status = ORDER_STATUS.COMPLETED;
         await order.save({ session });
 
         await session.commitTransaction();

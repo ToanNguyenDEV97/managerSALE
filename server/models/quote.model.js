@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const { QUOTE_STATUS } = require('../utils/constants'); // Import
+
 const quoteItemSchema = new Schema({
     productId: { type: String, required: true },
     name: { type: String, required: true },
@@ -17,7 +19,7 @@ const quoteSchema = new Schema({
     issueDate: { type: String, required: true },
     items: [quoteItemSchema],
     totalAmount: { type: Number, required: true },
-    status: { type: String, required: true, enum: ['Mới', 'Đã gửi', 'Đã chuyển đổi'], default: 'Mới' },
+    status: { type: String, required: true, enum: Object.values(QUOTE_STATUS), default: QUOTE_STATUS.NEW },
 }, {
     timestamps: true
 });

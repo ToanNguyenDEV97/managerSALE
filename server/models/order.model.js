@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+const { ORDER_STATUS } = require('../utils/constants');
 
 const OrderSchema = new mongoose.Schema({
     organizationId: { type: String, required: true },
@@ -29,8 +32,8 @@ const OrderSchema = new mongoose.Schema({
     // TRẠNG THÁI QUAN TRỌNG CỦA QUY TRÌNH
     status: { 
         type: String, 
-        enum: ['Mới', 'Đang xử lý', 'Đang giao', 'Hoàn thành', 'Hủy'], 
-        default: 'Mới' 
+        enum: Object.values(ORDER_STATUS),
+        default: ORDER_STATUS.NEW
     },
     
     note: { type: String },
@@ -40,7 +43,7 @@ const OrderSchema = new mongoose.Schema({
         shipFee: { type: Number, default: 0 },
         phone: { type: String },     // Nên lưu thêm SĐT nhận hàng
         shipperName: { type: String },
-        status: { type: String, default: 'Chờ giao' }
+        status: { type: String, default: 'ORDER_STATUS.PENDING' }
     }
 }, { timestamps: true });
 
