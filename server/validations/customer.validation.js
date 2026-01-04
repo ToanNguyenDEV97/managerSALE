@@ -6,12 +6,27 @@ const createCustomer = {
             'any.required': 'Tên khách hàng là bắt buộc',
             'string.empty': 'Tên khách hàng không được để trống'
         }),
-        phone: Joi.string().allow('', null).pattern(/^[0-9]{10,11}$/).messages({
-            'string.pattern.base': 'Số điện thoại không hợp lệ'
-        }),
+        
+        // [QUAN TRỌNG] Validate chính xác SĐT Việt Nam
+        phone: Joi.string()
+            .required()
+            .pattern(/^0[3|5|7|8|9][0-9]{8}$/) 
+            .messages({
+                'any.required': 'Số điện thoại là bắt buộc',
+                'string.empty': 'Số điện thoại không được để trống',
+                'string.pattern.base': 'Số điện thoại không hợp lệ'
+            }),
+            
         address: Joi.string().allow('', null),
         taxCode: Joi.string().allow('', null),
-        // Chặn không cho gửi debt (công nợ) khi tạo mới, công nợ phải = 0
+        
+        // Các trường bổ sung
+        group: Joi.string().allow('', null).default('Khách lẻ'),
+        email: Joi.string().email().allow('', null).messages({
+            'string.email': 'Email không hợp lệ'
+        }),
+        notes: Joi.string().allow('', null),
+        
         debt: Joi.forbidden() 
     })
 };
@@ -24,11 +39,18 @@ const updateCustomer = {
     }),
     body: Joi.object().keys({
         name: Joi.string().trim(),
-        phone: Joi.string().allow('', null).pattern(/^[0-9]{10,11}$/),
+        
+        // Validate cả khi update
+        phone: Joi.string().pattern(/^0[3|5|7|8|9][0-9]{8}$/).messages({
+            'string.pattern.base': 'Số điện thoại không hợp lệ (Phải là 10 số, đầu 03, 05, 07, 08, 09)'
+        }),
+        
         address: Joi.string().allow('', null),
         taxCode: Joi.string().allow('', null),
-        // Có cho phép sửa nợ trực tiếp không? Thường là không, nợ thay đổi qua giao dịch.
-        // Nếu muốn fix nợ thủ công thì để, còn không nên chặn.
+        group: Joi.string().allow('', null),
+        email: Joi.string().email().allow('', null),
+        notes: Joi.string().allow('', null),
+        
         debt: Joi.number().optional() 
     }).min(1)
 };

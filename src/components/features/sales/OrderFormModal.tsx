@@ -3,8 +3,10 @@ import { FiPlus, FiTrash2, FiSearch, FiShoppingCart, FiUser, FiMapPin, FiTruck, 
 import { api } from '../../../utils/api';
 import toast from 'react-hot-toast';
 
-// UI System
-import { BaseModal } from '../../common/BaseModal';
+// --- SỬA DÒNG NÀY (Bỏ dấu ngoặc nhọn {}) ---
+import BaseModal from '../../common/BaseModal'; 
+
+// Các import khác giữ nguyên nếu chúng là named export
 import { FormInput } from '../../common/FormInput';
 import { Button } from '../../common/Button';
 
@@ -30,13 +32,12 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
     // Giao hàng (Delivery Info)
     const [isDelivery, setIsDelivery] = useState(false);
     const [address, setAddress] = useState('');
-    const [phone, setPhone] = useState(''); // [MỚI] State lưu SĐT nhận hàng
+    const [phone, setPhone] = useState(''); 
     const [shipFee, setShipFee] = useState<number>(0);
 
     const [loading, setLoading] = useState(false);
 
     // --- Helpers ---
-    // Hàm lấy ID an toàn (chấp nhận cả _id và id) để tránh lỗi undefined
     const getProductId = (item: any) => item._id || item.id;
 
     // Load dữ liệu ban đầu
@@ -63,7 +64,6 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
             if (exist) {
                 return prev.map(i => getProductId(i) === pId ? { ...i, qty: i.qty + 1 } : i);
             }
-            // Luôn đảm bảo item trong giỏ có _id chuẩn
             return [...prev, { ...product, _id: pId, qty: 1, customPrice: product.price }];
         });
     };
@@ -103,14 +103,12 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                     quantity: i.qty,
                     price: i.customPrice
                 })),
-                paymentAmount: paymentAmount, // Tiền khách trả trước (Cọc)
+                paymentAmount: paymentAmount, 
                 note: note,
-                
-                // [QUAN TRỌNG] Gửi thông tin giao hàng gồm cả SĐT
                 deliveryInfo: isDelivery ? {
                     isDelivery: true,
                     address: address,
-                    phone: phone, // Gửi SĐT người nhận
+                    phone: phone, 
                     shipFee: shipFee
                 } : null
             };
@@ -135,17 +133,16 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
             isOpen={true} 
             onClose={onClose} 
             title="Tạo Đơn Đặt Hàng Mới" 
-            width="max-w-7xl"
+            size="xl" // Sửa size thành xl hoặc custom class trong BaseModal nếu cần width="max-w-7xl"
             icon={<FiShoppingCart size={24}/>}
         >
-            <div className="flex flex-col lg:flex-row gap-6 h-[80vh] overflow-hidden">
+            <div className="flex flex-col lg:flex-row gap-6 h-[70vh] overflow-hidden">
                 
-                {/* --- CỘT TRÁI: DANH SÁCH SẢN PHẨM (POS MINI) --- */}
-                <div className="w-full lg:w-5/12 flex flex-col bg-white border-r border-slate-200 pr-2">
-                    {/* Ô Tìm kiếm */}
+                {/* --- CỘT TRÁI --- */}
+                <div className="w-full lg:w-5/12 flex flex-col bg-white border-r border-slate-200 pr-4">
                     <div className="mb-4">
                         <FormInput 
-                            placeholder="Tìm sản phẩm (Tên, Mã SKU)..." 
+                            placeholder="Tìm sản phẩm..." 
                             icon={<FiSearch/>} 
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
@@ -154,7 +151,6 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                         />
                     </div>
 
-                    {/* Lưới sản phẩm */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                         <div className="grid grid-cols-2 gap-3">
                             {products
@@ -184,10 +180,9 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                     </div>
                 </div>
 
-                {/* --- CỘT PHẢI: THÔNG TIN KHÁCH & THANH TOÁN --- */}
+                {/* --- CỘT PHẢI --- */}
                 <div className="w-full lg:w-7/12 flex flex-col pl-2">
                     
-                    {/* 1. Chọn Khách hàng & Ghi chú */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1"><FiUser/> Khách hàng</label>
@@ -196,11 +191,10 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                                 value={selectedCustomer}
                                 onChange={e => {
                                     setSelectedCustomer(e.target.value);
-                                    // [MỚI] Tự động điền SĐT và Địa chỉ khi chọn khách
                                     const cust = customers.find(c => getProductId(c) === e.target.value);
                                     if (cust) {
                                         if (cust.address) setAddress(cust.address);
-                                        if (cust.phone) setPhone(cust.phone); // Auto fill phone
+                                        if (cust.phone) setPhone(cust.phone);
                                     }
                                 }}
                             >
@@ -221,42 +215,37 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                         </div>
                     </div>
 
-                    {/* 2. Bảng Giỏ hàng (Cart Table) */}
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl overflow-hidden flex flex-col mb-4">
                         <div className="overflow-y-auto flex-1 custom-scrollbar">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-100 text-slate-700 font-bold text-xs sticky top-0 z-10 shadow-sm">
                                     <tr>
                                         <th className="px-3 py-2">Sản phẩm</th>
-                                        <th className="px-3 py-2 text-center w-24">SL</th>
-                                        <th className="px-3 py-2 text-right w-28">Đơn giá</th>
-                                        <th className="px-3 py-2 text-right w-28">Thành tiền</th>
-                                        <th className="px-2 py-2 w-10"></th>
+                                        <th className="px-3 py-2 text-center w-20">SL</th>
+                                        <th className="px-3 py-2 text-right">Thành tiền</th>
+                                        <th className="px-2 py-2 w-8"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
                                     {cart.length === 0 ? (
-                                        <tr><td colSpan={5} className="text-center py-10 text-slate-400">Chưa có sản phẩm nào</td></tr>
+                                        <tr><td colSpan={4} className="text-center py-10 text-slate-400">Chưa có sản phẩm nào</td></tr>
                                     ) : cart.map((item, idx) => (
                                         <tr key={idx} className="bg-white hover:bg-slate-50">
                                             <td className="px-3 py-2">
-                                                <div className="font-medium text-slate-800">{item.name}</div>
+                                                <div className="font-medium text-slate-800 line-clamp-1">{item.name}</div>
                                             </td>
                                             <td className="px-3 py-2 text-center">
                                                 <div className="flex items-center justify-center border rounded-lg bg-white">
-                                                    <button onClick={() => updateQuantity(getProductId(item), -1)} className="px-2 py-1 hover:bg-slate-100 font-bold text-slate-500">-</button>
-                                                    <span className="w-8 text-center font-bold text-xs">{item.qty}</span>
-                                                    <button onClick={() => updateQuantity(getProductId(item), 1)} className="px-2 py-1 hover:bg-slate-100 font-bold text-slate-500">+</button>
+                                                    <button onClick={() => updateQuantity(getProductId(item), -1)} className="px-1.5 hover:bg-slate-100 font-bold text-slate-500">-</button>
+                                                    <span className="w-6 text-center font-bold text-xs">{item.qty}</span>
+                                                    <button onClick={() => updateQuantity(getProductId(item), 1)} className="px-1.5 hover:bg-slate-100 font-bold text-slate-500">+</button>
                                                 </div>
-                                            </td>
-                                            <td className="px-3 py-2 text-right text-slate-600">
-                                                {item.customPrice?.toLocaleString()}
                                             </td>
                                             <td className="px-3 py-2 text-right font-bold text-slate-800">
                                                 {(item.customPrice * item.qty).toLocaleString()}
                                             </td>
                                             <td className="px-2 py-2 text-center">
-                                                <button onClick={() => removeFromCart(getProductId(item))} className="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors"><FiTrash2/></button>
+                                                <button onClick={() => removeFromCart(getProductId(item))} className="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50"><FiTrash2/></button>
                                             </td>
                                         </tr>
                                     ))}
@@ -264,100 +253,50 @@ const OrderFormModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                             </table>
                         </div>
                         
-                        {/* Footer Cart: Tổng số lượng & Tiền hàng */}
                         <div className="bg-white border-t p-3 flex justify-between items-center text-sm">
-                            <span className="text-slate-500">Tổng số lượng: <b className="text-slate-800">{cart.reduce((s, i) => s + i.qty, 0)}</b></span>
-                            <span className="font-bold text-slate-800">Tiền hàng: {totalGoods.toLocaleString()}</span>
+                            <span className="text-slate-500">Tổng SL: <b className="text-slate-800">{cart.reduce((s, i) => s + i.qty, 0)}</b></span>
+                            <span className="font-bold text-slate-800">Hàng: {totalGoods.toLocaleString()}</span>
                         </div>
                     </div>
 
-                    {/* 3. Thông tin Giao hàng & Thanh toán */}
-                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3 shadow-inner">
-                        
-                        {/* Toggle Giao hàng */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2 shadow-inner">
                         <div className="flex items-center justify-between">
                             <label className="flex items-center gap-2 cursor-pointer select-none">
                                 <input type="checkbox" checked={isDelivery} onChange={e => setIsDelivery(e.target.checked)} className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"/>
-                                <span className="font-bold text-sm text-slate-700 flex items-center gap-1"><FiTruck/> Giao hàng tận nơi</span>
+                                <span className="font-bold text-sm text-slate-700 flex items-center gap-1"><FiTruck/> Giao hàng</span>
                             </label>
                         </div>
 
-                        {/* Form Giao hàng (Hiện khi tick) */}
                         {isDelivery && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in-down bg-white p-3 rounded-lg border border-slate-200">
-                                <div className="md:col-span-3">
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <FiMapPin className="text-slate-400"/>
-                                        </div>
-                                        <input 
-                                            placeholder="Địa chỉ giao hàng chi tiết..." 
-                                            className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
-                                            value={address}
-                                            onChange={e => setAddress(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <FiPhone className="text-slate-400"/>
-                                        </div>
-                                        <input 
-                                            placeholder="Số điện thoại người nhận..." 
-                                            className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
-                                            value={phone}
-                                            onChange={e => setPhone(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="md:col-span-1">
-                                    <div className="relative">
-                                        <input 
-                                            type="number"
-                                            placeholder="Phí ship"
-                                            className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg outline-none text-right font-bold focus:ring-2 focus:ring-primary-500"
-                                            value={shipFee || ''}
-                                            onChange={e => setShipFee(Number(e.target.value))}
-                                        />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">đ</span>
-                                    </div>
-                                </div>
+                            <div className="grid grid-cols-3 gap-2 animate-fade-in-down bg-white p-2 rounded-lg border border-slate-200">
+                                <input placeholder="Địa chỉ..." className="col-span-3 text-xs border p-2 rounded outline-none" value={address} onChange={e => setAddress(e.target.value)} />
+                                <input placeholder="SĐT..." className="col-span-2 text-xs border p-2 rounded outline-none" value={phone} onChange={e => setPhone(e.target.value)} />
+                                <input type="number" placeholder="Ship" className="col-span-1 text-xs border p-2 rounded outline-none text-right" value={shipFee || ''} onChange={e => setShipFee(Number(e.target.value))} />
                             </div>
                         )}
 
-                        <div className="border-t border-slate-200 my-2"></div>
+                        <div className="border-t border-slate-200 my-1"></div>
 
-                        {/* Tổng thanh toán */}
                         <div className="flex justify-between items-center">
-                            <span className="text-lg font-bold text-slate-700">TỔNG CỘNG:</span>
-                            <span className="text-2xl font-bold text-primary-700">{finalTotal.toLocaleString()} ₫</span>
+                            <span className="text-base font-bold text-slate-700">TỔNG CỘNG:</span>
+                            <span className="text-xl font-bold text-primary-700">{finalTotal.toLocaleString()} ₫</span>
                         </div>
 
-                        {/* Khách trả / Cọc */}
-                        <div className="flex items-center gap-4 justify-end">
-                            <span className="text-sm font-semibold text-slate-600">Khách trả trước / Cọc:</span>
-                            <div className="w-40 relative">
-                                <input 
-                                    type="number"
-                                    className="w-full bg-white border border-primary-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 rounded-lg px-3 py-2 text-right font-bold text-green-600 outline-none"
-                                    value={paymentAmount || ''}
-                                    onChange={e => setPaymentAmount(Number(e.target.value))}
-                                    placeholder="0"
-                                />
-                                <span className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 text-xs hidden">đ</span>
-                            </div>
+                        <div className="flex items-center gap-2 justify-end">
+                            <span className="text-xs font-semibold text-slate-600">Khách trả trước:</span>
+                            <input 
+                                type="number"
+                                className="w-32 bg-white border border-primary-200 rounded px-2 py-1 text-right font-bold text-green-600 outline-none"
+                                value={paymentAmount || ''}
+                                onChange={e => setPaymentAmount(Number(e.target.value))}
+                                placeholder="0"
+                            />
                         </div>
-                        {debt > 0 && (
-                            <div className="text-right text-xs text-red-500 font-medium">
-                                Còn nợ lại: {debt.toLocaleString()} ₫
-                            </div>
-                        )}
 
                         <Button 
                             onClick={handleSubmit} 
                             isLoading={loading} 
-                            className="w-full py-3 mt-2 text-lg uppercase tracking-wide shadow-lg hover:shadow-xl transition-shadow"
+                            className="w-full py-2.5 mt-1 text-base uppercase tracking-wide shadow-md"
                         >
                             Hoàn Tất Đơn Hàng
                         </Button>

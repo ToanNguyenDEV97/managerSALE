@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Order = require('../models/order.model');
 const Customer = require('../models/customer.model');
-const Product = require('../models/product.model'); // Phải import Product
+const Product = require('../models/product.model');
 const Invoice = require('../models/invoice.model');
 const Quote = require('../models/quote.model');
 const { getNextSequence } = require('../utils/sequence');
@@ -38,14 +38,15 @@ exports.getOrders = async (req, res) => {
     }
 };
 
-// 2. TẠO ĐƠN HÀNG (Logic chặt chẽ)
+// 2. TẠO ĐƠN HÀNG (FULL LOGIC)
 exports.createOrder = async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
     session.startTransaction();
     
     try {
-        const { customerId, items, paymentAmount, deliveryInfo, note } = req.body;
+        // [CẬP NHẬT] Lấy thêm paymentMethod từ request
+        const { customerId, items, paymentAmount, deliveryInfo, note, paymentMethod } = req.body;
 
         // A. Lấy thông tin khách hàng
         let customerName = 'Khách lẻ';
@@ -59,9 +60,9 @@ exports.createOrder = async (req, res) => {
                 customerAddress = customer.address;
             }
         }
-        // B. Xử lý sản phẩm & Tính toán
-        // [QUAN TRỌNG] Lấy giá vốn (buyPrice) từ DB để snapshot lại
-        let totalAmount = 0;
+
+        // B. Xử lý sản phẩm & Tính toán (ĐÂY LÀ ĐOẠN QUAN TRỌNG ĐỂ CÓ totalAmount)
+        let totalAmount = 0; // <--- Khai báo biến totalAmount
         const processedItems = [];
 
         for (const item of items) {
@@ -70,21 +71,21 @@ exports.createOrder = async (req, res) => {
 
             const itemPrice = Number(item.price) || product.price; // Cho phép bán giá khác niêm yết
             const itemTotal = itemPrice * item.quantity;
-            totalAmount += itemTotal;
+            totalAmount += itemTotal; // Cộng dồn tiền
 
             processedItems.push({
                 productId: product._id,
                 name: product.name,
                 quantity: item.quantity,
                 price: itemPrice,
-                costPrice: product.buyPrice || 0, // [SNAPSHOT GIÁ VỐN TẠI THỜI ĐIỂM ĐẶT]
+                costPrice: product.buyPrice || 0, // Snapshot giá vốn
                 unit: product.unit || 'Cái'
             });
         }
 
         // C. Phí vận chuyển
         const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
-        const finalTotal = totalAmount + shipFee;
+        const finalTotal = totalAmount + shipFee; // <--- Sử dụng totalAmount ở đây
 
         // D. Tạo số đơn hàng
         const orderNumber = await getNextSequence(Order, PREFIXES.ORDER, organizationId);
@@ -99,8 +100,12 @@ exports.createOrder = async (req, res) => {
             customerAddress,
             items: processedItems,
             totalAmount: finalTotal,
-            depositAmount: paymentAmount || 0, // Tiền cọc
-            paidAmount: paymentAmount || 0,    // Tạm tính là đã trả (cọc)
+            depositAmount: paymentAmount || 0, // Tiền khách trả
+            paidAmount: paymentAmount || 0,    
+            
+            // [CẬP NHẬT] Lưu phương thức thanh toán
+            paymentMethod: paymentMethod || 'Tiền mặt',
+            
             status: ORDER_STATUS.NEW,
             note,
             isDelivery: deliveryInfo?.isDelivery || false,
@@ -108,7 +113,7 @@ exports.createOrder = async (req, res) => {
                 address: deliveryInfo.address,
                 phone: deliveryInfo.phone,
                 shipFee: shipFee,
-                status: ORDER_STATUS.PENDING
+                status: 'PENDING'
             } : undefined
         });
 
@@ -118,13 +123,14 @@ exports.createOrder = async (req, res) => {
 
     } catch (err) {
         await session.abortTransaction();
+        console.error("Create Order Error:", err); // Log lỗi ra console để dễ debug
         res.status(400).json({ message: err.message });
     } finally {
         session.endSession();
     }
 };
 
-// 3. Cập nhật trạng thái (Hủy đơn, v.v)
+// 3. Cập nhật trạng thái
 exports.updateOrder = async (req, res) => {
     try {
         const { status } = req.body;
@@ -139,7 +145,8 @@ exports.updateOrder = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
-// [MỚI] 4. Chuyển Đơn hàng -> Hóa đơn
+
+// 4. Chuyển Đơn hàng -> Hóa đơn
 exports.convertOrderToInvoice = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -147,26 +154,23 @@ exports.convertOrderToInvoice = async (req, res) => {
         const order = await Order.findOne({ _id: req.params.id, organizationId: req.organizationId }).session(session);
         if (!order) throw new Error('Đơn hàng không tồn tại');
 
-        // Tạo Invoice từ Order
         const invoiceNumber = await getNextSequence(Invoice, PREFIXES.INVOICE || 'HD', req.organizationId);
         const newInvoice = new Invoice({
             organizationId: req.organizationId,
             invoiceNumber,
             customerId: order.customerId,
             customerName: order.customerName,
-            items: order.items, // Copy items
+            items: order.items,
             totalAmount: order.totalAmount,
-            discountAmount: 0, // Tạm tính
-            finalAmount: order.totalAmount, // Tạm tính
-            paidAmount: order.depositAmount || 0, // Chuyển cọc sang đã thanh toán
+            discountAmount: 0,
+            finalAmount: order.totalAmount,
+            paidAmount: order.depositAmount || 0,
             status: ORDER_STATUS.PAID,
             issueDate: new Date(),
             note: `Chuyển từ đơn hàng #${order.orderNumber}`
         });
 
         await newInvoice.save({ session });
-
-        // Cập nhật Order -> Hoàn thành
         order.status = ORDER_STATUS.COMPLETED;
         await order.save({ session });
 
@@ -179,7 +183,8 @@ exports.convertOrderToInvoice = async (req, res) => {
         session.endSession();
     }
 };
-// [MỚI] 5. Chuyển Báo giá -> Đơn hàng
+
+// 5. Chuyển Báo giá -> Đơn hàng
 exports.convertQuoteToOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -201,8 +206,6 @@ exports.convertQuoteToOrder = async (req, res) => {
         });
 
         await newOrder.save({ session });
-        
-        // Cập nhật Quote -> Đã chốt
         quote.status = 'Đã chốt';
         await quote.save({ session });
 
@@ -215,7 +218,8 @@ exports.convertQuoteToOrder = async (req, res) => {
         session.endSession();
     }
 };
-// 6. XÓA ĐƠN HÀNG (Bổ sung hàm này)
+
+// 6. Xóa đơn hàng
 exports.deleteOrder = async (req, res) => {
     try {
         const order = await Order.findOneAndDelete({ 

@@ -1,15 +1,13 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
-
 const { ORDER_STATUS } = require('../utils/constants');
 
 const OrderSchema = new mongoose.Schema({
     organizationId: { type: String, required: true },
-    orderNumber: { type: String, required: true }, // Mã đơn: DH-00001
+    orderNumber: { type: String, required: true },
     
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
     customerName: { type: String },
-
     customerPhone: { type: String },
     customerAddress: { type: String },
     
@@ -19,17 +17,19 @@ const OrderSchema = new mongoose.Schema({
         quantity: { type: Number },
         price: { type: Number },
         unit: { type: String },
-        costPrice: { type: Number } // Lưu giá vốn để tính lãi sau này
+        costPrice: { type: Number }
     }],
     
     totalAmount: { type: Number, required: true },
-    depositAmount: { type: Number, default: 0 }, // Tiền cọc (nếu có)
+    depositAmount: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     
-    issueDate: { type: Date, default: Date.now },
-    deliveryDate: { type: Date }, // Ngày hẹn giao
+    // --- THÊM TRƯỜNG NÀY ---
+    paymentMethod: { type: String, default: 'Tiền mặt' }, 
     
-    // TRẠNG THÁI QUAN TRỌNG CỦA QUY TRÌNH
+    issueDate: { type: Date, default: Date.now },
+    deliveryDate: { type: Date },
+    
     status: { 
         type: String, 
         enum: Object.values(ORDER_STATUS),
@@ -41,9 +41,9 @@ const OrderSchema = new mongoose.Schema({
     delivery: {
         address: { type: String },
         shipFee: { type: Number, default: 0 },
-        phone: { type: String },     // Nên lưu thêm SĐT nhận hàng
+        phone: { type: String },
         shipperName: { type: String },
-        status: { type: String, default: 'ORDER_STATUS.PENDING' }
+        status: { type: String, default: 'PENDING' } // Sửa lại string cứng nếu cần
     }
 }, { timestamps: true });
 

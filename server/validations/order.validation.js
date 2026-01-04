@@ -1,31 +1,25 @@
 const Joi = require('joi');
 
-// Schema con cho từng sản phẩm trong đơn hàng
 const orderItemSchema = Joi.object().keys({
-    productId: Joi.string().required().length(24).hex().messages({
-        'any.required': 'Sản phẩm là bắt buộc',
-        'string.length': 'ID sản phẩm không hợp lệ'
-    }),
-    quantity: Joi.number().integer().min(1).required().messages({
-        'number.min': 'Số lượng phải lớn hơn 0',
-        'any.required': 'Số lượng là bắt buộc'
-    }),
-    // Cho phép override giá bán hoặc không
+    productId: Joi.string().required().length(24).hex(),
+    quantity: Joi.number().integer().min(1).required(),
     price: Joi.number().min(0).required()
 });
 
 const createOrder = {
     body: Joi.object().keys({
-        customerId: Joi.string().allow(null, '').length(24).hex(), // Khách lẻ thì null
-        // Validate mảng items
-        items: Joi.array().items(orderItemSchema).min(1).required().messages({
-            'array.min': 'Đơn hàng phải có ít nhất 1 sản phẩm',
-            'any.required': 'Danh sách sản phẩm là bắt buộc'
-        }),
-        paymentAmount: Joi.number().min(0).default(0), // Tiền khách trả/cọc
+        customerId: Joi.string().allow(null, '').length(24).hex(),
+        items: Joi.array().items(orderItemSchema).min(1).required(),
+        
+        // Đổi tên biến ở frontend hoặc backend cho khớp. 
+        // Ở đây mình giữ backend là paymentAmount cho đúng logic cọc/trả
+        paymentAmount: Joi.number().min(0).default(0), 
+        
+        // --- THÊM CHO PHÉP ---
+        paymentMethod: Joi.string().valid('Tiền mặt', 'Chuyển khoản', 'Công nợ', 'Thẻ').default('Tiền mặt'),
+        
         note: Joi.string().allow('', null),
         
-        // Validate thông tin giao hàng (nếu có)
         deliveryInfo: Joi.object().keys({
             isDelivery: Joi.boolean().default(false),
             address: Joi.string().when('isDelivery', { is: true, then: Joi.required() }),
@@ -45,7 +39,4 @@ const updateOrder = {
     })
 };
 
-module.exports = {
-    createOrder,
-    updateOrder
-};
+module.exports = { createOrder, updateOrder };

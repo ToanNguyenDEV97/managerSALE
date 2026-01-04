@@ -25,6 +25,7 @@ const quoteRoutes = require('./routes/quote.routes'); // Quotes
 const deliveryRoutes = require('./routes/delivery.routes'); // Deliveries
 const inventoryCheckRoutes = require('./routes/inventoryCheck.routes'); // Inventory Checks
 const cashFlowRoutes = require('./routes/cashFlow.routes'); // Cash Flow Transactions
+const organizationRoutes = require('./routes/organization.routes'); // Organization Info
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -53,21 +54,7 @@ app.use('/api/quotes', protect, quoteRoutes);
 app.use('/api/deliveries', protect, deliveryRoutes);
 app.use('/api/inventory-checks', protect, inventoryCheckRoutes);
 app.use('/api/cashflow-transactions', protect, cashFlowRoutes);
-
-// 4. Organization Settings (Giữ lại logic nhỏ này hoặc tách sau)
-app.get('/api/organization', protect, async (req, res) => {
-    try {
-        const org = await Organization.findById(req.organizationId);
-        res.json(org || { message: 'Chưa có thông tin công ty' });
-    } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-app.put('/api/organization', protect, async (req, res) => {
-    try {
-        const org = await Organization.findByIdAndUpdate(req.organizationId, req.body, { new: true });
-        res.json(org);
-    } catch (err) { res.status(500).json({ message: err.message }); }
-});
+app.use('/api/organization', protect, organizationRoutes);
 
 // 5. Serve Static Files (Production)
 // Chỉ phục vụ thư mục 'dist' (là thư mục chứa code Frontend sau khi đã build)
