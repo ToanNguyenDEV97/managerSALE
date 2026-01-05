@@ -1,54 +1,64 @@
-import React from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import Sidebar from './Sidebar';
+import UserDropdown from './UserDropdown';
+import ErrorBoundary from '../common/ErrorBoundary';
 import { useAppContext } from '../../context/DataContext';
-import { FiMenu } from 'react-icons/fi';
+import { FiMenu } from 'react-icons/fi'; // Dùng cho nút Mobile Header nếu cần
 
 const MainLayout: React.FC = () => {
     const { isSidebarOpen, setIsSidebarOpen } = useAppContext();
+    const location = useLocation();
+    const queryClient = useQueryClient();
+
+    // Auto reload data when navigation changes
+    useEffect(() => {
+        queryClient.invalidateQueries();
+    }, [location.key]);
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Sidebar */}
+        <div className="flex min-h-screen bg-slate-50">
+            {/* Sidebar (Fixed position) */}
             <Sidebar />
 
             {/* Main Content Wrapper */}
             <div 
                 className={`
-                    transition-all duration-300 ease-in-out min-h-screen flex flex-col
-                    ${isSidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}
+                    flex-1 flex flex-col transition-all duration-300 ease-in-out
+                    ${isSidebarOpen ? 'lg:pl-64' : 'lg:pl-20'} 
+                    w-full
                 `}
             >
-                {/* Header Mobile (Chỉ hiện trên màn hình nhỏ) */}
-                <header className="bg-white shadow-sm h-16 flex items-center px-4 lg:hidden sticky top-0 z-20">
-                    <button 
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="p-2 rounded-md hover:bg-gray-100 text-gray-600"
-                    >
-                        <FiMenu size={24} />
-                    </button>
-                    <span className="ml-4 font-semibold text-gray-800">ManagerSALE</span>
-                </header>
-
-                {/* Page Content */}
-                <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
-                    {/* Nút Toggle Sidebar trên Desktop (Tùy chọn, có thể để ở Header nếu bạn làm Header riêng) */}
-                    <div className="hidden lg:flex items-center justify-between mb-6">
-                         <button 
-                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                            className="p-2 -ml-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
-                            title={isSidebarOpen ? "Thu gọn menu" : "Mở rộng menu"}
+                {/* Header */}
+                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-6 shadow-sm sticky top-0 z-20">
+                    
+                    {/* Nút Menu Mobile (Chỉ hiện khi < lg) */}
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={() => setIsSidebarOpen(true)}
+                            className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden"
                         >
-                            <FiMenu size={20} />
+                            <FiMenu size={24} />
                         </button>
                         
-                        {/* Khu vực User Info hoặc Breadcrumb có thể để ở đây */}
-                        <div className="text-sm text-gray-500">
-                             Hệ thống quản lý bán hàng
+                        {/* Breadcrumb hoặc Title (Tùy chọn) */}
+                        <div className="hidden sm:block text-slate-500 text-sm font-medium">
+                            Hệ thống quản lý bán hàng
                         </div>
                     </div>
 
-                    <Outlet />
+                    {/* User Profile */}
+                    <div className="flex items-center gap-4">
+                        <UserDropdown />
+                    </div>
+                </header>
+
+                {/* Page Content */}
+                <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
+                    <ErrorBoundary resetKey={location.key}>
+                        <Outlet />
+                    </ErrorBoundary>
                 </main>
             </div>
         </div>

@@ -1,138 +1,98 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react'; // <-- Đã thêm useCallback, useMemo
-import { User, LoginResponse } from '../types';
-import { api } from '../utils/api';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-// 1. Định nghĩa kiểu dữ liệu cho Công ty
-export interface CompanyInfo {
-    name: string;
-    address: string;
-    phone: string;
-    email?: string;
-    website?: string;
-    taxCode?: string;
-    bankAccount?: string;
-    bankName?: string;
-    bankOwner?: string;
-    logoUrl?: string;
-}
-
-interface DataContextType {
-    // Auth
-    currentUser: User | null;
-    token: string | null;
+// 1. Định nghĩa kiểu dữ liệu cho Context
+interface AppContextType {
     isAuthenticated: boolean;
-    login: (email: string, pass: string, remember: boolean) => Promise<void>;
+    token: string | null;
+    user: any | null;
+    login: (token: string, userData: any) => void;
     logout: () => void;
-    updateProfile: (data: Partial<User>) => Promise<void>;
-
-    // UI
+    
+    // Thêm State điều khiển Sidebar
     isSidebarOpen: boolean;
-    setIsOpen: (isOpen: boolean) => void;
+    setIsSidebarOpen: (isOpen: boolean) => void;
+    
+    // State chỉnh sửa sản phẩm (giữ nguyên logic cũ của bạn)
+    editingProduct: any | null;
+    setEditingProduct: (product: any | null) => void;
+    
+    // State thanh toán hóa đơn (giữ nguyên logic cũ của bạn)
+    payingInvoiceId: string | null;
+    setPayingInvoiceId: (id: string | null) => void;
 
-    // Organization
-    companyInfo: CompanyInfo | null;
-    refreshCompanyInfo: () => Promise<void>;
+    companyInfo: any;
+    refreshCompanyInfo: () => void;
 }
 
-const DataContext = createContext<DataContextType>({} as DataContextType);
+const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // Auth State
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('token') || sessionStorage.getItem('token');
-        }
-        return null;
+export const DataProvider = ({ children }: { children: ReactNode }) => {
+    const navigate = useNavigate();
+    
+    // --- STATE AUTH ---
+    const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [user, setUser] = useState<any | null>(() => {
+        const savedUser = localStorage.getItem('user');
+        return savedUser ? JSON.parse(savedUser) : null;
     });
 
-    // UI State
-    const [isSidebarOpen, setIsOpen] = useState(true);
+    // --- STATE SIDEBAR (MẶC ĐỊNH LÀ TRUE - MỞ) ---
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-    // Company State
-    const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+    // --- CÁC STATE KHÁC ---
+    const [editingProduct, setEditingProduct] = useState<any | null>(null);
+    const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+    const [companyInfo, setCompanyInfo] = useState<any>(null);
 
-    // Hàm refresh thông tin công ty
-    const refreshCompanyInfo = async () => {
-        try {
-            const data = await api('/api/organization');
-            setCompanyInfo(data);
-        } catch (error) {
-            console.error("Lỗi tải thông tin cửa hàng:", error);
-        }
+    // Auth Logic
+    const login = (newToken: string, userData: any) => {
+        setToken(newToken);
+        setUser(userData);
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('user', JSON.stringify(userData));
+        navigate('/');
     };
 
-    // --- TỐI ƯU HÓA: Dùng useCallback để tránh tạo lại hàm login liên tục ---
-    const login = useCallback(async (email: string, pass: string, remember: boolean) => {
-        const data: LoginResponse = await api('/api/auth/login', { 
-            method: 'POST', 
-            body: JSON.stringify({ email, password: pass }) 
-        });
-
-        // 1. Lưu token vào Storage TRƯỚC
-        if (remember) {
-            localStorage.setItem('token', data.token);
-            sessionStorage.removeItem('token');
-            localStorage.setItem('rememberedEmail', email);
-        } else {
-            sessionStorage.setItem('token', data.token);
-            localStorage.removeItem('token');
-            localStorage.removeItem('rememberedEmail');
-        }
-
-        // 2. Sau đó mới update State
-        setToken(data.token);
-        setCurrentUser(data.user);
-    }, []); // Dependency array rỗng vì hàm này không phụ thuộc state nào bên ngoài
-
-    // --- TỐI ƯU HÓA: Dùng useCallback cho logout ---
-    const logout = useCallback(() => {
+    const logout = () => {
         setToken(null);
-        setCurrentUser(null);
-        setCompanyInfo(null);
+        setUser(null);
         localStorage.removeItem('token');
-        sessionStorage.removeItem('token');
-        window.location.href = '/login'; 
-    }, []);
-
-    const updateProfile = async (data: Partial<User>) => {
-        await api('/api/auth/profile', { method: 'PUT', body: JSON.stringify(data) });
-        setCurrentUser((prev) => prev ? { ...prev, ...data } : null);
+        localStorage.removeItem('user');
+        navigate('/login');
     };
 
-    // useEffect load data
-    useEffect(() => {
-        if (token) {
-            api('/api/auth/me')
-                .then((user) => setCurrentUser(user))
-                .catch(() => {
-                    // Xử lý lỗi token nếu cần
-                });
-
-            refreshCompanyInfo();
-        }
-    }, [token]);
-
-    // --- TỐI ƯU HÓA: Dùng useMemo để cache object value ---
-    // Chỉ tạo lại object này khi các biến phụ thuộc thay đổi
-    const value = useMemo(() => ({
-        currentUser,
-        token,
-        isAuthenticated: !!token,
-        login,
-        logout,
-        updateProfile,
-        isSidebarOpen,
-        setIsOpen,
-        companyInfo,
-        refreshCompanyInfo
-    }), [currentUser, token, isSidebarOpen, companyInfo, login, logout]);
+    // Load Company Info (Giả lập hoặc gọi API thật)
+    const refreshCompanyInfo = () => {
+        // Gọi API lấy thông tin công ty nếu cần
+        // setCompanyInfo(...)
+    };
 
     return (
-        <DataContext.Provider value={value}>
+        <AppContext.Provider value={{
+            isAuthenticated: !!token,
+            token,
+            user,
+            login,
+            logout,
+            isSidebarOpen,      // Export state
+            setIsSidebarOpen,   // Export hàm set
+            editingProduct,
+            setEditingProduct,
+            payingInvoiceId,
+            setPayingInvoiceId,
+            companyInfo,
+            refreshCompanyInfo
+        }}>
             {children}
-        </DataContext.Provider>
+        </AppContext.Provider>
     );
 };
 
-export const useAppContext = () => useContext(DataContext);
+export const useAppContext = () => {
+    const context = useContext(AppContext);
+    if (context === undefined) {
+        throw new Error('useAppContext must be used within a DataProvider');
+    }
+    return context;
+};
