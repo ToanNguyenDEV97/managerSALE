@@ -43,4 +43,5 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
-module.exports = authMiddleware;
+// [QUAN TRỌNG] Export dạng object để khớp với lệnh "const { protect } = require(...)"
+module.exports = { protect: authMiddleware };

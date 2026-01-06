@@ -39,9 +39,19 @@ const login = {
     }),
 };
 
+const updateProfile = {
+    body: Joi.object().keys({
+        name: Joi.string().required().messages({
+            'string.empty': 'Tên không được để trống',
+            'any.required': 'Vui lòng nhập tên hiển thị'
+        }),
+    }),
+};
+
 module.exports = {
     registerRequest,
     checkOtp,
     registerVerify,
-    login
+    login,
+    updateProfile
 };

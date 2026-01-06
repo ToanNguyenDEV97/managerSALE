@@ -3,6 +3,7 @@ import { useAppContext } from '../context/DataContext';
 import { useNavigate } from 'react-router-dom';
 import { FiMail, FiLock, FiLogIn, FiLoader, FiAlertCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { api } from '../utils/api';
 
 interface LoginPageProps {
     onGoToRegister?: () => void;
@@ -30,7 +31,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onGoToRegister }) => {
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
-        // ... (Giữ nguyên logic handleLogin cũ của bạn)
         e.preventDefault();
         setError(null);
         if (!email.trim() || !password.trim()) {
@@ -39,9 +39,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onGoToRegister }) => {
         }
         setLoading(true);
         try {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await login(email, password, remember); 
-            toast.success('Đăng nhập thành công!');
+            // [BƯỚC 1] Gọi API để lấy dữ liệu thực từ Server (Server không trả về password)
+            const res = await api('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password })
+            });
+
+            // [BƯỚC 2] Truyền Token và User info (đã an toàn) vào Context
+            if (res && res.token) {
+                // login(token, user) <- Truyền đúng thứ tự này
+                login(res.token, res.user);
+                toast.success('Đăng nhập thành công!');
+                // Nếu muốn lưu email để gợi ý lần sau (không liên quan mật khẩu)
+                if (remember) {
+                    localStorage.setItem('rememberedEmail', email);
+                } else {
+                    localStorage.removeItem('rememberedEmail');
+                }
+            }
         } catch (err: any) {
             console.error(err);
             const msg = err.message || 'Đăng nhập thất bại';
