@@ -12,7 +12,18 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Email hoặc mật khẩu sai' });
         
         const token = generateToken(user.id);
-        res.json({ token, user: { id: user._id, email: user.email, role: user.role, organizationId: user.organizationId } });
+        
+        // [FIX] Trả về đầy đủ thông tin (gồm name) và KHÔNG trả password
+        res.json({ 
+            token, 
+            user: { 
+                id: user._id, 
+                email: user.email, 
+                name: user.name, // Thêm trường này
+                role: user.role, 
+                organizationId: user.organizationId 
+            } 
+        });
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
@@ -61,26 +72,18 @@ exports.checkOtp = async (req, res) => {
 // Hoàn tất đăng ký
 exports.registerVerify = async (req, res) => {
     try {
-        console.log("👉 Dữ liệu nhận được từ Frontend:", req.body);
-        // 1. Nhận biến 'name' từ Frontend
         const { email, otp, password, name } = req.body;
         
         const user = await User.findOne({ email });
-        // Kiểm tra OTP...
         if (!user || user.otp !== otp || user.otpExpires < new Date()) 
             return res.status(400).json({ message: 'OTP lỗi hoặc hết hạn.' });
 
-        // 2. Tạo Organization với tên cửa hàng
         const newOrg = new Organization({ name: `Cửa hàng của ${name}`, email });
         await newOrg.save();
 
-        // 3. Cập nhật User
         user.organizationId = newOrg._id;
         user.password = password; 
-        
-        // [QUAN TRỌNG] Lưu tên người dùng vào DB
         user.name = name; 
-
         user.otp = undefined; 
         user.otpExpires = undefined;
         
@@ -91,7 +94,6 @@ exports.registerVerify = async (req, res) => {
 
         const token = generateToken(user.id);
         
-        // Trả về kết quả
         res.json({ 
             message: 'Đăng ký thành công!', 
             token, 
@@ -104,7 +106,7 @@ exports.registerVerify = async (req, res) => {
             } 
         });
     } catch (err) { 
-        console.error("Lỗi đăng ký:", err); // Log lỗi ra terminal để dễ debug
+        console.error("Lỗi đăng ký:", err);
         res.status(500).json({ message: err.message }); 
     }
 };
@@ -112,41 +114,95 @@ exports.registerVerify = async (req, res) => {
 // Lấy thông tin người dùng hiện tại
 exports.getMe = async (req, res) => {
     try {
-        // req.user đã được middleware 'protect' gán vào
-        res.json(req.user);
+        const user = req.user; // Đã có từ middleware protect
+        // [FIX BẢO MẬT] Chỉ trả về các trường an toàn
+        res.json({
+            id: user._id || user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            organizationId: user.organizationId
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 };
 
-// Tạo tài khoản cho nhân viên (Chỉ Owner mới gọi được - cần thêm middleware checkRole sau này)
+// Cập nhật thông tin cá nhân (Chuyển từ routes vào đây)
+exports.updateProfile = async (req, res) => {
+    try {
+        const { name } = req.body;
+        const user = await User.findByIdAndUpdate(
+            req.user.id, 
+            { name }, 
+            { new: true }
+        ).select('-password');
+
+        if (!user) return res.status(404).json({ message: 'Không tìm thấy user' });
+
+        res.json({
+            message: 'Cập nhật thành công',
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                organizationId: user.organizationId
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// Tạo tài khoản cho nhân viên
 exports.createEmployee = async (req, res) => {
     try {
         const { email, password, name } = req.body;
-        
-        // Lấy thông tin người đang gọi API (Chủ cửa hàng)
         const owner = await User.findById(req.user.id);
         
         if (!owner || !owner.organizationId) {
             return res.status(400).json({ message: 'Chỉ chủ cửa hàng mới được tạo nhân viên' });
         }
 
-        // Kiểm tra email trùng
         const existingUser = await User.findOne({ email });
         if (existingUser) return res.status(400).json({ message: 'Email này đã tồn tại' });
 
-        // Tạo user mới gắn với Organization của chủ
         const newUser = new User({
             email,
-            password, // Model sẽ tự hash
+            password,
             name,
             role: 'nhanvien',
-            organizationId: owner.organizationId // <--- Gắn chung công ty
+            organizationId: owner.organizationId
         });
 
         await newUser.save();
 
         res.json({ message: 'Tạo nhân viên thành công', user: { email: newUser.email, name: newUser.name } });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+exports.changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        
+        // 1. Tìm user
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: 'User không tồn tại' });
+
+        // 2. Kiểm tra mật khẩu cũ
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Mật khẩu hiện tại không đúng' });
+        }
+
+        // 3. Gán mật khẩu mới (Model sẽ tự hash)
+        user.password = newPassword;
+        await user.save();
+
+        res.json({ message: 'Đổi mật khẩu thành công!' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
