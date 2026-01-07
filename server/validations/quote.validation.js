@@ -16,7 +16,8 @@ const createQuote = {
         items: Joi.array().items(itemSchema).min(1).required(),
         totalAmount: Joi.number().min(0).required(),
         status: Joi.string().valid('Mới', 'Đã gửi', 'Đã chuyển đổi').default('Mới')
-    })
+    }),
+    organizationId: Joi.string().allow('', null)
 };
 
 const updateQuote = {

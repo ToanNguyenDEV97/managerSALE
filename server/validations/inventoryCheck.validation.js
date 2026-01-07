@@ -17,7 +17,8 @@ const createCheck = {
         status: Joi.string().valid('Nháp', 'Hoàn thành').default('Nháp'),
         items: Joi.array().items(itemSchema).min(1).required(),
         notes: Joi.string().allow('', null)
-    })
+    }),
+    organizationId: Joi.string().allow('', null)
 };
 
 const updateCheck = {

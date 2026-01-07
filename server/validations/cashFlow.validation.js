@@ -10,7 +10,8 @@ const createTransaction = {
         payerReceiverAddress: Joi.string().allow('', null),
         category: Joi.string().valid('Chi phí hoạt động', 'Trả NCC', 'Lương', 'Thu nợ khách hàng', 'Khác', 'Chênh lệch kho', 'Doanh thu bán hàng').required(),
         inputVat: Joi.number().min(0).default(0)
-    })
+    }),
+    organizationId: Joi.string().allow('', null)
 };
 
 const updateTransaction = {

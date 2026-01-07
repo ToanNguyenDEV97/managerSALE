@@ -25,7 +25,9 @@ const createOrder = {
             address: Joi.string().when('isDelivery', { is: true, then: Joi.required() }),
             phone: Joi.string().when('isDelivery', { is: true, then: Joi.required() }),
             shipFee: Joi.number().min(0).default(0)
-        }).optional()
+        }).optional(),
+        
+        organizationId: Joi.string().allow('', null)
     })
 };
 

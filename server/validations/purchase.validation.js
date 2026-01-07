@@ -14,7 +14,8 @@ const createPurchase = {
         issueDate: Joi.string().required(), // Dạng chuỗi hoặc ISO date
         items: Joi.array().items(itemSchema).min(1).required().messages({ 'array.min': 'Phiếu nhập phải có ít nhất 1 sản phẩm' }),
         totalAmount: Joi.number().min(0).required()
-    })
+    }),
+    organizationId: Joi.string().allow('', null)
 };
 
 module.exports = { createPurchase };

@@ -4,48 +4,34 @@ const CashFlowTransaction = require('../models/cashFlowTransaction.model');
 
 // 1. Số liệu tổng quan
 exports.getStats = async (req, res) => {
-    const { organizationId } = req;
     try {
-        const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-        const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+        // [QUAN TRỌNG] Chỉ lấy dữ liệu của cửa hàng hiện tại
+        const query = { organizationId: req.organizationId };
 
-        const todayStats = await Invoice.aggregate([
-            { $match: { organizationId, createdAt: { $gte: startOfDay } } },
-            { $group: { _id: null, revenue: { $sum: "$paidAmount" }, count: { $sum: 1 } } }
+        // 1. Thống kê cơ bản
+        const [totalProducts, totalCustomers, totalOrders] = await Promise.all([
+            Product.countDocuments(query),
+            Customer.countDocuments(query),
+            Order.countDocuments(query)
         ]);
 
-        const monthStats = await Invoice.aggregate([
-            { $match: { organizationId, createdAt: { $gte: startOfMonth } } },
-            { $group: { _id: null, revenue: { $sum: "$paidAmount" } } }
+        // 2. Tính doanh thu (Dựa trên hóa đơn đã thanh toán thuộc cửa hàng này)
+        // Lưu ý: Nếu Invoice chưa có organizationId thì query này sẽ ra 0.
+        // (Code sync ở auth.controller.js đã xử lý việc này rồi)
+        const revenueAgg = await Invoice.aggregate([
+            { $match: { ...query, status: 'Đã thanh toán' } }, // Lọc theo Org và trạng thái
+            { $group: { _id: null, total: { $sum: "$totalAmount" } } }
         ]);
-
-        const lowStockCount = await Product.countDocuments({ organizationId, stock: { $lte: 10 } });
-
-        const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const chartData = await Invoice.aggregate([
-            { $match: { organizationId, createdAt: { $gte: sevenDaysAgo } } },
-            { $project: { date: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, amount: "$paidAmount" } },
-            { $group: { _id: "$date", total: { $sum: "$amount" } } },
-            { $sort: { _id: 1 } }
-        ]);
-
-        const topProducts = await Invoice.aggregate([
-            { $match: { organizationId } },
-            { $unwind: "$items" },
-            { $group: { _id: "$items.name", qty: { $sum: "$items.quantity" } } },
-            { $sort: { qty: -1 } },
-            { $limit: 5 }
-        ]);
+        const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].total : 0;
 
         res.json({
-            revenueToday: todayStats[0]?.revenue || 0,
-            ordersToday: todayStats[0]?.count || 0,
-            revenueMonth: monthStats[0]?.revenue || 0,
-            lowStockCount,
-            chartData: chartData || [],
-            topProducts: topProducts || []
+            products: totalProducts,
+            customers: totalCustomers,
+            orders: totalOrders,
+            revenue: totalRevenue
         });
     } catch (error) {
+        console.error(error);
         res.status(500).json({ message: error.message });
     }
 };
