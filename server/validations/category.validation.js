@@ -5,7 +5,8 @@ const createCategory = {
         name: Joi.string().required().trim().messages({
             'any.required': 'Tên danh mục là bắt buộc',
             'string.empty': 'Tên danh mục không được để trống'
-        })
+        }),
+        organizationId: Joi.string().allow('', null)
     })
 };
 

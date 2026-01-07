@@ -27,7 +27,8 @@ const createCustomer = {
         }),
         notes: Joi.string().allow('', null),
         
-        debt: Joi.forbidden() 
+        debt: Joi.forbidden(),
+        organizationId: Joi.string().allow('', null)
     })
 };
 

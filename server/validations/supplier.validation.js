@@ -6,7 +6,17 @@ const createSupplier = {
         phone: Joi.string().allow('', null).pattern(/^[0-9]{10,11}$/).messages({ 'string.pattern.base': 'SĐT không hợp lệ' }),
         address: Joi.string().allow('', null),
         taxCode: Joi.string().allow('', null),
-        debt: Joi.forbidden() // Chặn set nợ khi tạo mới
+        
+        // [THÊM CÁC TRƯỜNG CÒN THIẾU]
+        email: Joi.string().email().allow('', null),
+        website: Joi.string().allow('', null),
+        group: Joi.string().allow('', null),
+        notes: Joi.string().allow('', null),
+
+        // [QUAN TRỌNG] Cho phép gửi kèm organizationId
+        organizationId: Joi.string().allow('', null),
+
+        debt: Joi.forbidden() 
     })
 };
 
@@ -17,7 +27,13 @@ const updateSupplier = {
         phone: Joi.string().allow('', null).pattern(/^[0-9]{10,11}$/),
         address: Joi.string().allow('', null),
         taxCode: Joi.string().allow('', null),
-        debt: Joi.number().optional() // Cho phép sửa công nợ nếu cần thiết
+        
+        email: Joi.string().email().allow('', null),
+        website: Joi.string().allow('', null),
+        group: Joi.string().allow('', null),
+        notes: Joi.string().allow('', null),
+        
+        debt: Joi.number().optional()
     }).min(1)
 };
 

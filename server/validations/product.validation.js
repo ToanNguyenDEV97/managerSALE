@@ -37,7 +37,8 @@ const updateProduct = {
         unit: Joi.string(),
         image: Joi.string().allow('', null),
         description: Joi.string().allow('', null),
-        vat: Joi.number().min(0).max(100)
+        vat: Joi.number().min(0).max(100),
+        organizationId: Joi.string().allow('', null)
     }).min(1) // Phải gửi ít nhất 1 trường để update
 };
 
