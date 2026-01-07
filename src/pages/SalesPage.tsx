@@ -178,24 +178,24 @@ const SalesPage: React.FC = () => {
     };
 
     // Helper Components
-    const PaymentMethodButton = ({ method, icon: Icon, label }: any) => (
-        <button
-            onClick={() => setPaymentMethod(method)}
-            className={`flex-1 flex flex-col items-center justify-center py-2 rounded-lg border transition-all duration-200 gap-1
-                ${paymentMethod === method 
-                    ? 'bg-primary-600 border-primary-600 text-white shadow-md' 
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-primary-50 hover:border-primary-200'
-                }
-            `}
-        >
-            <Icon size={18} />
-            <span className="text-[11px] font-bold">{label}</span>
-        </button>
+   const PaymentMethodButton = ({ method, icon: Icon, label, currentMethod, setMethod }: any) => (
+    <button
+        onClick={() => setMethod(method)}
+        className={`flex-1 flex flex-col items-center justify-center py-2 rounded-lg border transition-all duration-200 gap-1
+            ${currentMethod === method 
+                ? 'bg-primary-600 border-primary-600 text-white shadow-md' 
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-primary-50 hover:border-primary-200'
+            }
+        `}
+    >
+        <Icon size={18} />
+        <span className="text-[11px] font-bold">{label}</span>
+    </button>
     );
 
-    const QuickCashButton = ({ value }: { value: number }) => (
+    const QuickCashButton = ({ value, onClick }: { value: number, onClick: (val: number) => void }) => (
         <button
-            onClick={() => setAmountPaid(value)}
+            onClick={() => onClick(value)}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold border border-slate-200 transition-colors"
         >
             {value.toLocaleString('vi-VN')}
@@ -312,8 +312,14 @@ const SalesPage: React.FC = () => {
                     </div>
 
                     <div className="flex gap-2 mb-3">
-                        <PaymentMethodButton method="Tiền mặt" icon={FiDollarSign} label="Tiền mặt" />
-                        <PaymentMethodButton method="Chuyển khoản" icon={FiCreditCard} label="Chuyển khoản" />
+                        <PaymentMethodButton 
+                            method="Tiền mặt" icon={FiDollarSign} label="Tiền mặt" 
+                            currentMethod={paymentMethod} setMethod={setPaymentMethod} 
+                        />
+                        <PaymentMethodButton 
+                            method="Chuyển khoản" icon={FiCreditCard} label="Chuyển khoản" 
+                            currentMethod={paymentMethod} setMethod={setPaymentMethod} 
+                        />
                     </div>
 
                     <div className="mb-3">
@@ -337,7 +343,7 @@ const SalesPage: React.FC = () => {
                             <div className="flex gap-2 mt-2 overflow-x-auto pb-1 custom-scrollbar">
                                 <button onClick={()=>setAmountPaid(totalAmount)} className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-bold border border-primary-100 whitespace-nowrap hover:bg-primary-100">Đủ tiền</button>
                                 {[500000, 200000, 100000, 50000].map(val => (
-                                    <QuickCashButton key={val} value={val} />
+                                    <QuickCashButton key={val} value={val} onClick={setAmountPaid} />
                                 ))}
                             </div>
                         )}

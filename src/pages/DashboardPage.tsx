@@ -11,12 +11,15 @@ import { useNavigate } from 'react-router-dom';
 // Import Chart.js (Thư viện biểu đồ)
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, 
-  BarElement, ArcElement, Title, Tooltip, Legend
+  BarElement, ArcElement, Title, Tooltip, Legend, Filler 
 } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 
 // Đăng ký các thành phần biểu đồ
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend);
+ChartJS.register(
+    CategoryScale, LinearScale, PointElement, LineElement, 
+    BarElement, ArcElement, Title, Tooltip, Legend, Filler
+);
 
 const DashboardPage: React.FC = () => {
     const { isSidebarOpen, setIsOpen, currentUser } = useAppContext();
