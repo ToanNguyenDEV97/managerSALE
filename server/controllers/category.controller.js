@@ -7,8 +7,21 @@ exports.getCategories = async (req, res) => {
 };
 
 exports.createCategory = async (req, res) => {
-    try { res.status(201).json(await new Category({ ...req.body, organizationId: req.organizationId }).save()); } 
-    catch (e) { res.status(500).json({ message: e.message }); }
+    try {
+        const { name, description } = req.body;
+        const organizationId = req.organizationId; 
+        
+        const category = new Category({ 
+            name, 
+            description,
+            organizationId: organizationId // <--- Thêm dòng này
+        });
+
+        await category.save();
+        res.status(201).json(category);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
 exports.updateCategory = async (req, res) => {

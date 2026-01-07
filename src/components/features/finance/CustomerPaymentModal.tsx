@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Invoice } from '../types';
+import type { Invoice } from '../../../types';
 import { FiCreditCard, FiChevronRight } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../../../context/DataContext';
 
 const getStatusClass = (status: Invoice['status']) => {
     switch (status) {

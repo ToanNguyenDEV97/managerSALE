@@ -1,13 +1,11 @@
 import toast from 'react-hot-toast';
 
-// [SỬA LẠI] Thêm đuôi /api vào cuối đường dẫn
-const BASE_URL = 'http://localhost:5001/api';
+// [QUAN TRỌNG] Trỏ về Server Backend
+const BASE_URL = 'http://localhost:5001';
 
 export const api = async (endpoint: string, options: RequestInit = {}) => {
-    // 1. Lấy token
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
-    // 2. Chuẩn bị Header
     const headers: any = {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -17,21 +15,22 @@ export const api = async (endpoint: string, options: RequestInit = {}) => {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // 3. Xử lý URL
-    // Nếu endpoint bắt đầu bằng http (link ngoài) thì giữ nguyên
-    // Nếu không thì nối BASE_URL + endpoint (Ví dụ: .../api + /auth/login)
-    const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint}`;
+    // Xử lý URL thông minh: Tự động thêm /api nếu thiếu
+    let url = endpoint;
+    if (!endpoint.startsWith('http')) {
+        const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        const finalPath = path.startsWith('/api') ? path : `/api${path}`;
+        url = `${BASE_URL}${finalPath}`;
+    }
 
     try {
-        console.log(`Dang goi API: ${url}`); // Bạn mở Console (F12) để xem nó in ra link đúng chưa nhé
         
-        // 4. Gọi Fetch
         const response = await fetch(url, {
             ...options,
             headers,
         });
 
-        // 5. Xử lý logic 204 No Content
+        // Xử lý 204 No Content
         if (response.status === 204) return null;
 
         const textData = await response.text();
@@ -43,25 +42,19 @@ export const api = async (endpoint: string, options: RequestInit = {}) => {
         } catch (e) {
             console.error("Lỗi Parse JSON:", textData);
             if (textData.includes('<!DOCTYPE html>')) {
-                throw new Error("Sai đường dẫn API (Thiếu /api) hoặc Server lỗi.");
+                throw new Error("Sai đường dẫn API hoặc Server chưa bật.");
             }
-            throw new Error("Dữ liệu từ Server không đúng định dạng JSON");
+            throw new Error("Dữ liệu từ Server lỗi format");
         }
 
-        // 6. Xử lý lỗi từ Server
         if (!response.ok) {
             if (response.status === 401) {
                 localStorage.removeItem('token');
                 sessionStorage.removeItem('token');
-                localStorage.removeItem('rememberedEmail');
-                if (window.location.pathname !== '/login') {
-                    window.location.href = '/login';
-                }
+                window.location.href = '/login';
                 throw new Error('Phiên đăng nhập hết hạn');
             }
-
-            const errorMessage = data?.message || 'Có lỗi xảy ra';
-            throw new Error(errorMessage);
+            throw new Error(data?.message || 'Có lỗi xảy ra');
         }
 
         return data;

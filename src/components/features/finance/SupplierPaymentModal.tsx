@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../../../context/DataContext';
 
 const SupplierPaymentModal: React.FC = () => {
   const { payingSupplierId, suppliers, handlePaySupplierDebt, setPayingSupplierId } = useAppContext();

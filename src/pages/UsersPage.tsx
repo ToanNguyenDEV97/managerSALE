@@ -9,6 +9,7 @@ const UsersPage: React.FC = () => {
     const [userToDelete, setUserToDelete] = React.useState<User | null>(null);
 
     const sortedUsers = useMemo(() => {
+        if (!users || !Array.isArray(users)) return []; 
         return [...users].sort((a, b) => (a.createdAt && b.createdAt) ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() : 0);
     }, [users]);
     

@@ -9,12 +9,14 @@ import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import ReturnInvoiceModal from '../components/features/sales/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
+import PaymentModal from '../components/features/finance/PaymentModal';
 
 import InvoiceDetailsModal from '../components/features/sales/InvoiceDetailsModal'; 
 import PrintInvoiceModal from '../components/print/PrintInvoiceModal';
 
 const InvoicesPage: React.FC = () => {
-    const { setPayingInvoiceId } = useAppContext();
+    const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+
     const deleteMutation = useDeleteInvoice();
     const returnMutation = useReturnInvoice();
 
@@ -318,7 +320,13 @@ const InvoicesPage: React.FC = () => {
                                         <td className="px-6 py-4 text-center sticky right-0 bg-white dark:bg-slate-800 group-hover:bg-slate-50 dark:group-hover:bg-slate-700/50">
                                             <div className="flex justify-center items-center gap-2">
                                                 {debt > 0 && inv.status !== 'Đã hoàn trả' && (
-                                                    <button onClick={() => setPayingInvoiceId(inv.id || inv._id)} className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded transition-colors" title="Thu nợ"><FiDollarSign size={18}/></button>
+                                                    <button 
+                                                        onClick={() => setPayingInvoiceId(inv.id || inv._id)} 
+                                                        className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded transition-colors" 
+                                                        title="Thu nợ"
+                                                    >
+                                                        <FiDollarSign size={18}/>
+                                                    </button>
                                                 )}
                                                 
                                                 <button 
@@ -409,6 +417,19 @@ const InvoicesPage: React.FC = () => {
                     <p>Bạn đang chọn xóa <b>{selectedIds.length}</b> hóa đơn cùng lúc.</p>
                     <p className="text-sm text-red-500 mt-2 font-bold">Hành động này không thể hoàn tác!</p>
                 </ConfirmationModal>
+            )}
+
+            {payingInvoiceId && (
+                <PaymentModal
+                    isOpen={!!payingInvoiceId}
+                    onClose={() => setPayingInvoiceId(null)}
+                    invoiceId={payingInvoiceId}
+                    // Nếu PaymentModal của bạn cần prop onSuccess để reload data:
+                    onSuccess={() => {
+                        setPayingInvoiceId(null);
+                        // Data sẽ tự reload nhờ React Query invalidate
+                    }}
+                />
             )}
 
             {selectedInvoiceId && (

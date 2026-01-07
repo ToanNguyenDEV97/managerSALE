@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../context/DataContext';
-import { useInvoices } from '../hooks/useInvoices'; // Import Hook
+import { useAppContext } from '../../../context/DataContext';
+import { useInvoices } from '../../../hooks/useInvoices'; // Import Hook
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../utils/api';
+import { api } from '../../../utils/api';
 import toast from 'react-hot-toast';
 
 const PaymentModal: React.FC = () => {

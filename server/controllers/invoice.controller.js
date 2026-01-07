@@ -219,7 +219,7 @@ exports.payInvoice = async (req, res) => {
         await invoice.save({ session });
 
         if (invoice.customerId) {
-            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { debt: -payAmount } }).session(session);
+            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -payAmount } }).session(session);
         }
 
         const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
@@ -253,7 +253,7 @@ exports.deleteInvoice = async (req, res) => {
 
         const debtAmount = invoice.totalAmount - invoice.paidAmount;
         if (invoice.customerId && debtAmount > 0) {
-            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { debt: -debtAmount } }).session(session);
+            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -debtAmount } }).session(session);
         }
 
         await Invoice.deleteOne({ _id: invoice._id }).session(session);
