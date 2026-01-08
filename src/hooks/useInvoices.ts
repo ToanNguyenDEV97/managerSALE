@@ -46,7 +46,7 @@ export const useSaveInvoice = () => {
             queryClient.invalidateQueries({ queryKey: ['products'] }); 
             queryClient.invalidateQueries({ queryKey: ['customers'] }); 
             queryClient.invalidateQueries({ queryKey: ['cashflow'] }); 
-            toast.success('Lưu đơn hàng thành công! ✅');
+            toast.success('Lưu hóa đơn thành công! ✅');
         },
         onError: (err: any) => toast.error(err.message),
     });

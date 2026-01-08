@@ -1,6 +1,8 @@
 const Invoice = require('../models/invoice.model');
 const Product = require('../models/product.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
+const Customer = require('../models/customer.model');
+const Order = require('../models/order.model');
 
 // 1. Số liệu tổng quan
 exports.getStats = async (req, res) => {

@@ -1,40 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../utils/api';
+import { api } from '../../utils/api';
 import { FiLoader, FiPrinter, FiX } from 'react-icons/fi';
+import { readMoneyToText } from '../../utils/currency';
 
 interface Props {
     orderIds: string[];
     onClose: () => void;
 }
-
-const readMoney = (number: number) => {
-    const VIETNAMESE_NUMBERS = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
-    const PLACES = ["", "nghìn", "triệu", "tỷ", "nghìn tỷ", "triệu tỷ"];
-    if (number === 0) return "Không đồng";
-    let s = number.toString();
-    let l = s.length;
-    let groups = [];
-    for (let i = l; i > 0; i -= 3) groups.push(s.substring(Math.max(0, i - 3), i));
-    let result = [];
-    for (let i = 0; i < groups.length; i++) {
-        let group = parseInt(groups[i]);
-        if (group === 0) continue;
-        let temp = [];
-        let tram = Math.floor(group / 100);
-        let chuc = Math.floor((group % 100) / 10);
-        let donvi = group % 10;
-        if (tram > 0 || (i < groups.length - 1)) temp.push(VIETNAMESE_NUMBERS[tram] + " trăm");
-        if (chuc === 0 && donvi > 0 && (tram > 0 || i < groups.length - 1)) temp.push("lẻ");
-        else if (chuc === 1) temp.push("mười");
-        else if (chuc > 1) temp.push(VIETNAMESE_NUMBERS[chuc] + " mươi");
-        if (chuc > 0 && donvi === 1) temp.push("mốt");
-        else if (chuc > 0 && donvi === 5) temp.push("lăm");
-        else if (donvi > 0) temp.push(VIETNAMESE_NUMBERS[donvi]);
-        if (temp.length > 0) result.unshift(temp.join(" ") + " " + PLACES[i]);
-    }
-    let str = result.join(" ").trim();
-    return str.charAt(0).toUpperCase() + str.slice(1) + " đồng";
-};
 
 const BulkPrintModal: React.FC<Props> = ({ orderIds, onClose }) => {
     const [orders, setOrders] = useState<any[]>([]);
@@ -166,7 +138,7 @@ const BulkPrintModal: React.FC<Props> = ({ orderIds, onClose }) => {
                                     </table>
                                     <div className="mt-3 text-right">
                                         <p className="text-[11px] italic text-slate-600">
-                                            (Bằng chữ: <span className="font-bold">{readMoney(order.totalAmount)}</span>)
+                                            (Bằng chữ: <span className="font-bold">{readMoneyToText(order.totalAmount)}</span>)
                                         </p>
                                     </div>
                                 </div>

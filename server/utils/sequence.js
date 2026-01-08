@@ -13,18 +13,19 @@ const getNextSequence = async (model, prefix, organizationId) => {
         [PREFIXES.PAYMENT_SLIP]: 'transactionNumber',
         [PREFIXES.DELIVERY]: 'deliveryNumber',
         [PREFIXES.CHECK]: 'checkNumber',
-        [PREFIXES.RETURN]: 'returnNumber'
+        [PREFIXES.RETURN]: 'returnNumber',
+
+        'VC': 'deliveryNumber'
     };
 
     const sequenceField = fieldMap[prefix];
     if (!sequenceField) {
-        // Fallback: Nếu không tìm thấy mapping, thử đoán tên trường
-        // Nhưng tốt nhất là nên define đủ trong fieldMap
-        console.warn(`Warning: Chưa config fieldMap cho prefix ${prefix}`);
+        // Log warning để biết đường debug
+        console.warn(`Warning: Chưa config fieldMap cho prefix '${prefix}'. Đang dùng fallback.`);
         return `${prefix}-00001`; 
     }
     
-    // Logic tìm số tiếp theo
+    // Logic tìm số tiếp theo (Giữ nguyên)
     const lastDoc = await model.findOne({ 
         organizationId, 
         [sequenceField]: new RegExp('^' + prefix) 
@@ -34,10 +35,10 @@ const getNextSequence = async (model, prefix, organizationId) => {
 
     try {
         const parts = lastDoc[sequenceField].split('-');
-        const lastNumStr = parts[parts.length - 1]; // Lấy phần số cuối cùng
+        const lastNumStr = parts[parts.length - 1];
         const lastNum = parseInt(lastNumStr, 10);
         
-        if (isNaN(lastNum)) return `${prefix}-00001`; // Phòng trường hợp data cũ bị lỗi
+        if (isNaN(lastNum)) return `${prefix}-00001`;
         
         return `${prefix}-${(lastNum + 1).toString().padStart(5, '0')}`;
     } catch (e) {

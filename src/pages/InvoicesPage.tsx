@@ -3,32 +3,35 @@ import {
     FiPrinter, FiEye, FiTrash2, FiSearch, FiFilter, 
     FiDollarSign, FiDownload, FiRotateCcw, FiCheckSquare, FiX 
 } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
+import { useAppContext } from '../context/DataContext'; // [QUAN TRỌNG] Dùng Context
 import { useInvoices, useDeleteInvoice, useReturnInvoice } from '../hooks/useInvoices';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import ReturnInvoiceModal from '../components/features/sales/ReturnInvoiceModal';
 import toast from 'react-hot-toast';
+
+// Import PaymentModal (Không cần props nữa)
 import PaymentModal from '../components/features/finance/PaymentModal';
 
 import InvoiceDetailsModal from '../components/features/sales/InvoiceDetailsModal'; 
 import PrintInvoiceModal from '../components/print/PrintInvoiceModal';
 
 const InvoicesPage: React.FC = () => {
-    const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+    // [SỬA 1] Lấy hàm setPayingInvoiceId từ Context (Thay vì useState cục bộ)
+    const { setPayingInvoiceId } = useAppContext();
 
     const deleteMutation = useDeleteInvoice();
     const returnMutation = useReturnInvoice();
 
-    // --- STATE QUẢN LÝ ---
+    // --- STATE QUẢN LÝ CỤC BỘ ---
     const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null); // Modal Xem
     const [printingInvoiceId, setPrintingInvoiceId] = useState<string | null>(null); // Modal In
     const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);     // Modal Xóa lẻ
     const [invoiceToReturn, setInvoiceToReturn] = useState<{id: string, code: string} | null>(null); // Modal Trả
 
-    // 1. [MỚI] STATE CHO BULK ACTIONS (Chọn nhiều)
+    // STATE CHO BULK ACTIONS
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [isBulkDeleting, setIsBulkDeleting] = useState(false); // Modal xác nhận xóa nhiều
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
     // State lọc dữ liệu
     const [page, setPage] = useState(1);
@@ -103,9 +106,7 @@ const InvoicesPage: React.FC = () => {
     const invoices = Array.isArray(invoiceData) ? invoiceData : (invoiceData?.data || []);
     const totalPages = invoiceData?.totalPages || 1;
 
-    // --- 2. [MỚI] LOGIC CHECKBOX CHỌN NHIỀU ---
-    
-    // Chọn/Bỏ chọn một dòng
+    // --- LOGIC CHECKBOX CHỌN NHIỀU ---
     const toggleSelectOne = (id: string) => {
         if (selectedIds.includes(id)) {
             setSelectedIds(prev => prev.filter(item => item !== id));
@@ -114,22 +115,17 @@ const InvoicesPage: React.FC = () => {
         }
     };
 
-    // Chọn/Bỏ chọn tất cả (trong trang hiện tại)
     const toggleSelectAll = () => {
         if (selectedIds.length === invoices.length) {
-            setSelectedIds([]); // Bỏ chọn hết
+            setSelectedIds([]); 
         } else {
-            // Chọn hết các ID trong trang này
             const allIds = invoices.map((inv: any) => inv.id || inv._id);
             setSelectedIds(allIds);
         }
     };
 
-    // Xử lý Xóa hàng loạt
     const handleBulkDelete = async () => {
         if (selectedIds.length === 0) return;
-        
-        // Dùng Promise.all để xóa song song (hoặc bạn có thể viết API xóa bulk ở backend)
         const toastId = toast.loading('Đang xóa các hóa đơn...');
         try {
             await Promise.all(selectedIds.map(id => deleteMutation.mutateAsync(id)));
@@ -265,7 +261,6 @@ const InvoicesPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                         <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
-                                {/* 3. [MỚI] CHECKBOX SELECT ALL */}
                                 <th className="px-6 py-3 text-center w-10">
                                     <input 
                                         type="checkbox" 
@@ -297,7 +292,6 @@ const InvoicesPage: React.FC = () => {
                                         key={inv.id || inv._id} 
                                         className={`transition-colors group ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
                                     >
-                                        {/* 4. [MỚI] CHECKBOX TỪNG DÒNG */}
                                         <td className="px-6 py-4 text-center">
                                             <input 
                                                 type="checkbox" 
@@ -319,6 +313,7 @@ const InvoicesPage: React.FC = () => {
                                         
                                         <td className="px-6 py-4 text-center sticky right-0 bg-white dark:bg-slate-800 group-hover:bg-slate-50 dark:group-hover:bg-slate-700/50">
                                             <div className="flex justify-center items-center gap-2">
+                                                {/* [SỬA 2] Nút này giờ gọi setPayingInvoiceId của Context */}
                                                 {debt > 0 && inv.status !== 'Đã hoàn trả' && (
                                                     <button 
                                                         onClick={() => setPayingInvoiceId(inv.id || inv._id)} 
@@ -365,7 +360,6 @@ const InvoicesPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* --- 5. [MỚI] FLOATING BULK ACTIONS BAR (Thanh công cụ hàng loạt) --- */}
             {selectedIds.length > 0 && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 animate-bounce-in">
                     <span className="font-bold flex items-center gap-2">
@@ -389,7 +383,6 @@ const InvoicesPage: React.FC = () => {
                 </div>
             )}
 
-            {/* CÁC MODAL CŨ */}
             <ReturnInvoiceModal 
                 isOpen={!!invoiceToReturn}
                 onClose={() => setInvoiceToReturn(null)}
@@ -397,7 +390,6 @@ const InvoicesPage: React.FC = () => {
                 invoiceNumber={invoiceToReturn?.code}
             />
 
-            {/* Modal Xóa Lẻ */}
             {invoiceToDelete && (
                 <ConfirmationModal 
                     isOpen={!!invoiceToDelete} onClose={() => setInvoiceToDelete(null)}
@@ -408,7 +400,6 @@ const InvoicesPage: React.FC = () => {
                 </ConfirmationModal>
             )}
 
-            {/* [MỚI] Modal Xóa Hàng Loạt */}
             {isBulkDeleting && (
                 <ConfirmationModal 
                     isOpen={isBulkDeleting} onClose={() => setIsBulkDeleting(false)}
@@ -419,18 +410,8 @@ const InvoicesPage: React.FC = () => {
                 </ConfirmationModal>
             )}
 
-            {payingInvoiceId && (
-                <PaymentModal
-                    isOpen={!!payingInvoiceId}
-                    onClose={() => setPayingInvoiceId(null)}
-                    invoiceId={payingInvoiceId}
-                    // Nếu PaymentModal của bạn cần prop onSuccess để reload data:
-                    onSuccess={() => {
-                        setPayingInvoiceId(null);
-                        // Data sẽ tự reload nhờ React Query invalidate
-                    }}
-                />
-            )}
+            {/* [SỬA 3] PaymentModal giờ tự quản lý hiển thị, không cần điều kiện && payingInvoiceId */}
+            <PaymentModal />
 
             {selectedInvoiceId && (
                 <InvoiceDetailsModal

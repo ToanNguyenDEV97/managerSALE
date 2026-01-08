@@ -3,6 +3,7 @@ const Invoice = require('../models/invoice.model');
 const Customer = require('../models/customer.model');
 const Product = require('../models/product.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
+const Delivery = require('../models/delivery.model');
 const { getNextSequence } = require('../utils/sequence');
 const { changeStock } = require('../utils/stockUtils');
 const { PREFIXES } = require('../utils/constants');
@@ -51,7 +52,11 @@ exports.getInvoices = async (req, res) => {
 // 2. Chi tiết
 exports.getInvoiceById = async (req, res) => {
     try {
-        const invoice = await Invoice.findOne({ _id: req.params.id, organizationId: req.organizationId });
+        const { organizationId } = req;
+        const invoice = await Invoice.findOne({ _id: req.params.id, organizationId })
+            // [THÊM DÒNG NÀY] Lấy chi tiết khách hàng (tên, sđt, địa chỉ, công ty)
+            .populate('customerId', 'name phone address companyName taxCode') 
+            .populate('items.productId', 'sku name unit');
         if (!invoice) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
         res.json(invoice);
     } catch (err) { res.status(500).json({ message: err.message }); }
@@ -108,6 +113,7 @@ exports.createInvoice = async (req, res) => {
 
         const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
 
+        // Lưu Hóa đơn
         const newInvoice = new Invoice({
             invoiceNumber, organizationId,
             customerId: customerId || null, customerName,
@@ -118,10 +124,45 @@ exports.createInvoice = async (req, res) => {
             paymentMethod: paymentMethod || 'Tiền mặt',
             status, note,
             isDelivery: deliveryInfo?.isDelivery || false,
-            delivery: deliveryInfo?.isDelivery ? { ...deliveryInfo, status: 'Chờ giao' } : undefined
+            delivery: deliveryInfo?.isDelivery ? { ...deliveryInfo, status: 'PENDING' } : undefined
         });
         await newInvoice.save({ session });
 
+        // [MỚI] === TỰ ĐỘNG TẠO PHIẾU GIAO HÀNG (DELIVERY) ===
+        if (deliveryInfo?.isDelivery) {
+            const Delivery = require('../models/delivery.model'); // Đảm bảo đã import
+            const { DELIVERY_STATUS } = require('../utils/constants'); // Import constant
+
+            const deliveryNumber = await getNextSequence(Delivery, 'VC', organizationId); // Đổi tên biến thành deliveryNumber cho khớp model
+            
+            const codAmount = Math.max(0, finalAmount - (paymentAmount || 0));
+
+            const newDelivery = new Delivery({
+                organizationId,
+                deliveryNumber: deliveryNumber, // [Mapping đúng] deliveryCode -> deliveryNumber
+                invoiceId: newInvoice._id.toString(), // Chuyển ObjectId sang String
+                
+                customerId: customerId || 'GUEST', // Xử lý trường hợp khách lẻ
+                customerName: customerName,
+                customerPhone: deliveryInfo.phone, // [Mapping đúng] phone -> customerPhone
+                customerAddress: deliveryInfo.address, // [Mapping đúng] address -> customerAddress
+                
+                issueDate: new Date(),   // [Thêm] Ngày tạo
+                deliveryDate: new Date(), // [Thêm] Ngày giao dự kiến (mặc định hôm nay)
+                
+                items: processedItems, // Đã thêm vào model
+                shipFee: shipFee,      // Đã thêm vào model
+                codAmount: codAmount,  // Đã thêm vào model
+                
+                status: DELIVERY_STATUS.PENDING, // [SỬA QUAN TRỌNG] Dùng Value ('Chờ giao') thay vì Key ('PENDING')
+                
+                driverName: deliveryInfo.shipperName || '', 
+                notes: note // [Mapping đúng] note -> notes
+            });
+            await newDelivery.save({ session });
+        }
+
+        // Cập nhật công nợ khách hàng
         const debtChange = finalAmount - (paymentAmount || 0);
         if (customer && debtChange > 0) {
             await Customer.findByIdAndUpdate(customerId, { $inc: { totalDebt: debtChange } }).session(session);

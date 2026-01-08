@@ -12,5 +12,6 @@ const {
 
 router.get('/', getOrganization);
 router.put('/', updateOrganization);
+router.get('/me', organizationController.getMe);
 
 module.exports = router;

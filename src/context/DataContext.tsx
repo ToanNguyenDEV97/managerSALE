@@ -45,6 +45,30 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
     const [companyInfo, setCompanyInfo] = useState<any>(null);
 
+    // Load thông tin công ty khi component mount
+    const fetchCompanyInfo = async () => {
+        try {
+            // Giả sử bạn có API này (nếu chưa có thì xem Bước 4)
+            const res: any = await api('/api/organization/me'); 
+            setCompanyInfo(res);
+        } catch (error) {
+            console.error("Lỗi lấy thông tin cửa hàng:", error);
+            // Fallback nếu lỗi
+            setCompanyInfo({
+                name: "CỬA HÀNG MỚI",
+                address: "Chưa cập nhật địa chỉ",
+                phone: "09xxxxxxxx",
+            });
+        }
+    };
+    // Gọi hàm này khi app khởi chạy (trong useEffect)
+    useEffect(() => {
+        if (isAuthenticated) { // Chỉ lấy khi đã login
+             // ... các hàm fetch khác
+             fetchCompanyInfo();
+        }
+    }, [isAuthenticated]);
+
     // Auth Logic
     const login = (newToken: string, userData: any) => {
         setToken(newToken);

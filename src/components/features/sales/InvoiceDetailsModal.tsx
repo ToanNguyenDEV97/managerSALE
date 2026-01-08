@@ -245,34 +245,86 @@ const InvoiceDetailsModal: React.FC<Props> = ({ invoiceId, onClose, onPrint }) =
                                             </table>
                                         </div>
                                         
+                                        {/* --- PHẦN TỔNG KẾT TIỀN (LOGIC MỚI) --- */}
                                         <div className="bg-slate-50/80 border-t border-slate-200 p-5 flex flex-col items-end gap-2">
+                                            
+                                            {/* 1. Tổng tiền hàng (Hàng hóa thuần túy) */}
                                             <div className="flex justify-between w-full max-w-xs text-sm">
                                                 <span className="text-slate-500">Tổng tiền hàng:</span>
-                                                <span className="font-semibold text-slate-800">{invoice.totalAmount?.toLocaleString()} đ</span>
-                                            </div>
-                                            <div className="flex justify-between w-full max-w-xs text-sm">
-                                                <span className="text-slate-500">Chiết khấu:</span>
-                                                <span className="font-semibold text-slate-800">0 đ</span>
-                                            </div>
-                                            <div className="w-full max-w-xs border-t border-slate-200 my-1"></div>
-                                            
-                                            <div className="flex justify-between w-full max-w-xs items-center">
-                                                <span className="font-bold text-slate-700 text-lg">Khách phải trả:</span>
-                                                <span className="font-bold text-blue-600 text-2xl">{invoice.totalAmount?.toLocaleString()} đ</span>
+                                                <span className="font-bold text-slate-800">
+                                                    {invoice.totalAmount?.toLocaleString()} đ
+                                                </span>
                                             </div>
 
-                                            <div className="w-full max-w-xs bg-white p-3 rounded-lg border border-slate-200 mt-2 space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-slate-600">Đã thanh toán:</span>
-                                                    <span className="font-bold text-emerald-600">{invoice.paidAmount?.toLocaleString()} đ</span>
+                                            {/* 2. Phí vận chuyển (Chỉ hiện nếu > 0) */}
+                                            {(invoice.delivery?.shipFee || 0) > 0 && (
+                                                <div className="flex justify-between w-full max-w-xs text-sm">
+                                                    <span className="text-slate-500">Phí vận chuyển:</span>
+                                                    <span className="font-bold text-blue-600">
+                                                        + {invoice.delivery.shipFee.toLocaleString()} đ
+                                                    </span>
                                                 </div>
-                                                {(invoice.totalAmount - (invoice.paidAmount || 0)) > 0 && (
-                                                    <div className="flex justify-between text-sm pt-2 border-t border-dashed border-slate-200">
-                                                        <span className="text-rose-600 font-medium">Còn nợ:</span>
-                                                        <span className="font-bold text-rose-600">{(invoice.totalAmount - (invoice.paidAmount || 0)).toLocaleString()} đ</span>
-                                                    </div>
-                                                )}
+                                            )}
+
+                                            {/* 3. Chiết khấu (Chỉ hiện nếu > 0) */}
+                                            {(invoice.discountAmount || 0) > 0 && (
+                                                <div className="flex justify-between w-full max-w-xs text-sm">
+                                                    <span className="text-slate-500">Chiết khấu:</span>
+                                                    <span className="font-bold text-green-600">
+                                                        - {invoice.discountAmount.toLocaleString()} đ
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* ĐƯỜNG KẺ NGANG */}
+                                            <div className="w-full max-w-xs border-t border-slate-300 my-1"></div>
+                                            
+                                            {/* 4. TỔNG KHÁCH PHẢI TRẢ (FINAL AMOUNT) */}
+                                            <div className="flex justify-between w-full max-w-xs items-center">
+                                                <span className="font-black text-slate-700 text-base uppercase">Khách phải trả:</span>
+                                                <span className="font-black text-red-600 text-xl">
+                                                    {invoice.finalAmount?.toLocaleString()} đ
+                                                </span>
                                             </div>
+
+                                            {/* 5. KHÁCH ĐÃ ĐƯA / ĐÃ THANH TOÁN */}
+                                            <div className="flex justify-between w-full max-w-xs text-sm mt-2 pt-2 border-t border-dashed border-slate-200">
+                                                <span className="text-slate-600 font-medium">Khách đã đưa:</span>
+                                                <span className="font-bold text-slate-800">
+                                                    {invoice.paidAmount?.toLocaleString()} đ
+                                                </span>
+                                            </div>
+
+                                            {/* 6. TÍNH TOÁN THỪA / THIẾU */}
+                                            {(() => {
+                                                const debt = (invoice.finalAmount || 0) - (invoice.paidAmount || 0);
+                                                if (debt > 0) {
+                                                    // Khách còn nợ
+                                                    return (
+                                                        <div className="flex justify-between w-full max-w-xs text-sm">
+                                                            <span className="text-red-500 font-bold italic">Còn nợ lại:</span>
+                                                            <span className="font-bold text-red-500">{debt.toLocaleString()} đ</span>
+                                                        </div>
+                                                    );
+                                                } else if (debt < 0) {
+                                                    // Tiền thừa trả khách
+                                                    return (
+                                                        <div className="flex justify-between w-full max-w-xs text-sm">
+                                                            <span className="text-green-600 font-bold italic">Tiền thừa trả khách:</span>
+                                                            <span className="font-bold text-green-600">{Math.abs(debt).toLocaleString()} đ</span>
+                                                        </div>
+                                                    );
+                                                } else {
+                                                    // Đủ tiền
+                                                    return (
+                                                        <div className="flex justify-center w-full max-w-xs mt-1">
+                                                            <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200">
+                                                                Đã thanh toán đủ
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+                                            })()}
                                         </div>
                                     </div>
                                 </div>

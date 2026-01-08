@@ -29,6 +29,16 @@ const updateOrganization = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+// Lấy thông tin tổ chức hiện tại
+exports.getMe = async (req, res) => {
+    try {
+        const org = await Organization.findById(req.organizationId);
+        if (!org) return res.status(404).json({ message: 'Không tìm thấy thông tin' });
+        res.json(org);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
 
 module.exports = {
     getOrganization,

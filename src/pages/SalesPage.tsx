@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     FiSearch, FiShoppingCart, FiTrash2, FiPlus, FiMinus, 
-    FiUser, FiCheckCircle, FiFilter, FiAlertCircle, FiCreditCard, FiDollarSign, FiPrinter, FiFileText
+    FiUser, FiCheckCircle, FiFilter, FiAlertCircle, FiCreditCard, FiDollarSign, FiPrinter, FiFileText,
+    FiTruck, FiMapPin, FiPhone // [MỚI] Thêm icon
 } from 'react-icons/fi';
 import { useQuery } from '@tanstack/react-query'; 
 import { NumericFormat } from 'react-number-format';
 import { Button } from '../components/common/Button';
 import { useProducts } from '../hooks/useProducts';
 import { useAllCustomers } from '../hooks/useCustomers'; 
-import { useCreateOrder } from '../hooks/useOrders';
+import { useSaveInvoice } from '../hooks/useInvoices'; // [SỬA] Dùng hook tạo hóa đơn chuẩn
 import { useDebounce } from '../hooks/useDebounce';
 import { toast } from 'react-hot-toast';
 import { formatCurrency } from '../utils/currency';
@@ -17,7 +18,7 @@ import QuickCustomerModal from '../components/features/partners/QuickCustomerMod
 
 // --- TYPE DEFINITIONS ---
 interface CartItem {
-    id: string; // Đây sẽ lưu _id của sản phẩm
+    id: string; 
     sku: string;
     name: string;
     price: number;
@@ -40,7 +41,7 @@ const SalesPage: React.FC = () => {
     const { data: categories = [] } = useQuery({
         queryKey: ['categories'],
         queryFn: async () => {
-            const res = await api('/api/categories');
+            const res: any = await api('/api/categories');
             return Array.isArray(res) ? res : (res.data || []);
         },
         staleTime: 5 * 60 * 1000, 
@@ -52,27 +53,52 @@ const SalesPage: React.FC = () => {
     const { data: customersData } = useAllCustomers();
     const customers = customersData?.data || [];
 
-    // State
+    // State Bán hàng
     const [cart, setCart] = useState<CartItem[]>([]);
     const [customerId, setCustomerId] = useState('');
     
-    // Thanh toán
+    // State Thanh toán & Giao hàng [MỚI]
     const [amountPaid, setAmountPaid] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState('Tiền mặt');
     const [isPrintEnabled, setIsPrintEnabled] = useState(true); 
     const [orderNote, setOrderNote] = useState('');
     const [showNoteInput, setShowNoteInput] = useState(false);
 
+    // [MỚI] State cho Giao hàng
+    const [isDelivery, setIsDelivery] = useState(false);
+    const [shipFee, setShipFee] = useState<number>(0);
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [recipientPhone, setRecipientPhone] = useState('');
+
     // Helpers
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
-    const createOrderMutation = useCreateOrder();
+    const createInvoiceMutation = useSaveInvoice(); // Dùng mutation tạo hóa đơn
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // --- 2. LOGIC ---
+    // --- 2. LOGIC TỰ ĐỘNG ---
+
+    // [MỚI] Tự động điền thông tin giao hàng khi chọn khách
+    useEffect(() => {
+        if (customerId) {
+            const customer = customers.find((c: any) => c.id === customerId || c._id === customerId);
+            if (customer) {
+                if (isDelivery) {
+                    setDeliveryAddress(customer.address || '');
+                    setRecipientPhone(customer.phone || '');
+                }
+            }
+        } else {
+            // Nếu bỏ chọn khách thì reset (tùy nhu cầu)
+            if (isDelivery) {
+                setDeliveryAddress('');
+                setRecipientPhone('');
+            }
+        }
+    }, [customerId, isDelivery, customers]);
+
+    // --- 3. LOGIC GIỎ HÀNG ---
     
-    // Thêm vào giỏ
     const addToCart = (product: any) => {
-        // Ưu tiên dùng _id nếu có, không thì id
         const prodId = product._id || product.id;
         
         if (product.stock <= 0) return toast.error('Sản phẩm đã hết hàng!');
@@ -98,7 +124,6 @@ const SalesPage: React.FC = () => {
         searchInputRef.current?.focus();
     };
 
-    // [MỚI] Sửa số lượng trực tiếp (input)
     const handleQuantityChange = (id: string, newQty: number) => {
         setCart(prev => prev.map(item => {
             if (item.id === id) {
@@ -113,7 +138,6 @@ const SalesPage: React.FC = () => {
         }));
     };
 
-    // Tăng giảm bằng nút
     const updateQuantity = (id: string, delta: number) => {
         setCart(prev => prev.map(item => {
             if (item.id === id) {
@@ -133,19 +157,27 @@ const SalesPage: React.FC = () => {
         setCart(prev => prev.filter(item => item.id !== id));
     };
 
-    const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const changeAmount = amountPaid - totalAmount;
+    // [CẬP NHẬT] Tính toán tổng tiền
+    const productTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const finalTotal = productTotal + (isDelivery ? shipFee : 0); // Cộng phí ship nếu có
+    const changeAmount = amountPaid - finalTotal;
 
+    // Tự động điền tiền khách đưa = tổng tiền khi tổng tiền thay đổi (nếu chưa nhập gì)
     useEffect(() => {
-        if (totalAmount > 0 && amountPaid === 0) setAmountPaid(totalAmount);
-    }, [totalAmount]);
+        if (finalTotal > 0 && amountPaid === 0) setAmountPaid(finalTotal);
+    }, [finalTotal]);
 
-    // [QUAN TRỌNG] Xử lý Thanh Toán chuẩn Payload
+    // --- 4. THANH TOÁN ---
     const handleCheckout = async () => {
         if (cart.length === 0) return toast.error('Giỏ hàng trống!');
         
+        // [MỚI] Validate giao hàng
+        if (isDelivery) {
+            if (!deliveryAddress.trim()) return toast.error('Vui lòng nhập địa chỉ giao hàng!');
+            if (!recipientPhone.trim()) return toast.error('Vui lòng nhập SĐT người nhận!');
+        }
+
         try {
-            // Mapping đúng cấu trúc Backend yêu cầu
             const payload = {
                 customerId: customerId || null,
                 items: cart.map(item => ({
@@ -153,27 +185,41 @@ const SalesPage: React.FC = () => {
                     quantity: item.quantity,
                     price: item.price
                 })),
-                paymentAmount: amountPaid, // Đổi tên amountPaid -> paymentAmount
-                paymentMethod: paymentMethod, // Backend đã hỗ trợ
+                paymentAmount: amountPaid, 
+                paymentMethod: paymentMethod,
                 note: orderNote,
-                // Không gửi status, totalAmount (Backend tự tính)
+                
+                // [MỚI] Thông tin giao hàng gửi xuống backend
+                deliveryInfo: isDelivery ? {
+                    isDelivery: true,
+                    shipFee: shipFee,
+                    address: deliveryAddress,
+                    phone: recipientPhone,
+                    shipperName: '', // Có thể thêm field chọn shipper sau
+                    status: 'Chờ giao'
+                } : { isDelivery: false }
             };
 
-            await createOrderMutation.mutateAsync(payload);
-
-            toast.success('Thanh toán thành công!');
+            await createInvoiceMutation.mutateAsync(payload);
             
-            // Reset
+            // Reset state
             setCart([]);
             setAmountPaid(0);
             setCustomerId('');
             setSearchTerm('');
             setOrderNote('');
             setShowNoteInput(false);
+            
+            // Reset Delivery
+            setIsDelivery(false);
+            setShipFee(0);
+            setDeliveryAddress('');
+            setRecipientPhone('');
+
             searchInputRef.current?.focus();
         } catch (error: any) {
             console.error(error);
-            toast.error('Lỗi: ' + (error.response?.data?.message || error.message));
+            // Error đã được hook handle
         }
     };
 
@@ -205,7 +251,7 @@ const SalesPage: React.FC = () => {
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-80px)] gap-4 animate-fade-in pb-2">
             
-            {/* === CỘT TRÁI === */}
+            {/* === CỘT TRÁI: DANH SÁCH SẢN PHẨM === */}
             <div className="w-full lg:w-[65%] flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 flex flex-col gap-4 bg-white z-10 shadow-sm">
                     <div className="relative w-full">
@@ -227,7 +273,6 @@ const SalesPage: React.FC = () => {
                         </div>
                         <button onClick={() => setSelectedCategory('')} className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold border transition-all ${selectedCategory === '' ? 'bg-primary-600 border-primary-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Tất cả</button>
                         {categories.map((cat: Category) => (
-                            // [FIX] Dùng cat._id làm key để tránh warning
                             <button key={cat._id} onClick={() => setSelectedCategory(cat.name)} className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-all ${selectedCategory === cat.name ? 'bg-primary-600 border-primary-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{cat.name}</button>
                         ))}
                     </div>
@@ -241,7 +286,6 @@ const SalesPage: React.FC = () => {
                     ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 content-start">
                             {products.map((product: any) => (
-                                // [FIX] Dùng _id nếu có
                                 <div key={product._id || product.id} onClick={() => addToCart(product)} className={`group bg-white rounded-lg border p-3 cursor-pointer flex flex-col shadow-sm select-none transition-all ${product.stock <= 0 ? 'border-slate-100 bg-slate-50 opacity-60 pointer-events-none' : 'border-slate-200 hover:border-primary-500 hover:shadow-md hover:-translate-y-0.5'}`}>
                                     <div className="flex justify-between items-start gap-2 mb-2">
                                         <h3 className="font-semibold text-slate-700 text-sm line-clamp-2 leading-snug group-hover:text-primary-700">{product.name}</h3>
@@ -258,8 +302,10 @@ const SalesPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* === CỘT PHẢI === */}
+            {/* === CỘT PHẢI: GIỎ HÀNG & THANH TOÁN === */}
             <div className="w-full lg:w-[35%] flex flex-col bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden h-full">
+                
+                {/* 1. Chọn Khách hàng */}
                 <div className="p-4 bg-primary-50 border-b border-primary-100 flex gap-2 shrink-0 items-center">
                     <div className="relative flex-1">
                         <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-500 z-10" />
@@ -272,6 +318,7 @@ const SalesPage: React.FC = () => {
                     <button onClick={() => setIsCustomerModalOpen(true)} className="bg-white p-2.5 rounded-xl border border-primary-200 text-primary-600 hover:bg-primary-600 hover:text-white transition-all shadow-sm"><FiPlus size={20} /></button>
                 </div>
 
+                {/* 2. Danh sách Cart */}
                 <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar bg-slate-50">
                     {cart.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-70"><div className="bg-white p-4 rounded-full shadow-sm mb-4"><FiShoppingCart size={40} className="text-slate-300"/></div><p>Giỏ hàng trống</p></div>
@@ -284,8 +331,6 @@ const SalesPage: React.FC = () => {
                             <div className="flex items-center gap-3">
                                 <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
                                     <button onClick={() => updateQuantity(item.id, -1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-slate-600 hover:text-red-600"><FiMinus size={12}/></button>
-                                    
-                                    {/* [MỚI] Input chỉnh số lượng */}
                                     <input 
                                         type="number"
                                         className="w-10 text-center text-sm font-bold text-slate-800 bg-transparent outline-none focus:text-primary-600"
@@ -293,7 +338,6 @@ const SalesPage: React.FC = () => {
                                         onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value) || 0)}
                                         onFocus={(e) => e.target.select()}
                                     />
-                                    
                                     <button onClick={() => updateQuantity(item.id, 1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-slate-600 hover:text-green-600"><FiPlus size={12}/></button>
                                 </div>
                                 <div className="flex flex-col items-end min-w-[70px]">
@@ -305,12 +349,62 @@ const SalesPage: React.FC = () => {
                     ))}
                 </div>
 
+                {/* 3. Khu vực tính tiền & Giao hàng */}
                 <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-                    <div className="flex justify-between items-end mb-3 border-b border-dashed border-slate-100 pb-2">
-                        <div className="text-slate-500 text-sm font-medium">Tổng tiền ({cart.reduce((s,i)=>s+i.quantity,0)}):</div>
-                        <div className="text-3xl font-black text-slate-800 tracking-tight">{formatCurrency(totalAmount)}</div>
+                    
+                    {/* [MỚI] Toggle Giao hàng */}
+                    <div className="flex items-center justify-between mb-3 bg-blue-50/50 p-2 rounded-lg border border-blue-100">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <div className={`w-10 h-6 rounded-full p-1 transition-colors ${isDelivery ? 'bg-blue-600' : 'bg-slate-300'}`} onClick={() => setIsDelivery(!isDelivery)}>
+                                <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${isDelivery ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                            <span className={`text-sm font-bold ${isDelivery ? 'text-blue-700' : 'text-slate-500'}`}>Giao hàng tận nơi</span>
+                        </label>
+                        {isDelivery && <FiTruck className="text-blue-500" />}
                     </div>
 
+                    {/* [MỚI] Form nhập thông tin Giao hàng (Chỉ hiện khi bật Toggle) */}
+                    {isDelivery && (
+                        <div className="mb-3 space-y-2 animate-fade-in bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <div className="flex gap-2">
+                                <div className="flex-1 relative">
+                                    <FiMapPin className="absolute left-2.5 top-2.5 text-blue-400 text-xs"/>
+                                    <input 
+                                        type="text" placeholder="Địa chỉ giao hàng..." 
+                                        className="w-full pl-7 pr-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                                        value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
+                                    />
+                                </div>
+                                <div className="w-1/3 relative">
+                                    <FiPhone className="absolute left-2.5 top-2.5 text-blue-400 text-xs"/>
+                                    <input 
+                                        type="text" placeholder="SĐT..." 
+                                        className="w-full pl-7 pr-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                                        value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-blue-700">Phí Ship:</span>
+                                <NumericFormat 
+                                    className="w-24 text-right py-1 px-2 text-sm font-bold text-blue-700 bg-white border border-blue-200 rounded-md focus:ring-1 focus:ring-blue-500 outline-none"
+                                    value={shipFee} onValueChange={(v) => setShipFee(v.floatValue || 0)}
+                                    thousandSeparator="," suffix=" ₫" placeholder="0 ₫"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Tổng tiền */}
+                    <div className="flex justify-between items-end mb-3 border-b border-dashed border-slate-100 pb-2">
+                        <div className="text-slate-500 text-sm font-medium flex flex-col">
+                            <span>Tổng hàng: {formatCurrency(productTotal)}</span>
+                            {isDelivery && <span className="text-blue-600 text-xs">+ Ship: {formatCurrency(shipFee)}</span>}
+                        </div>
+                        <div className="text-3xl font-black text-slate-800 tracking-tight">{formatCurrency(finalTotal)}</div>
+                    </div>
+
+                    {/* Phương thức thanh toán */}
                     <div className="flex gap-2 mb-3">
                         <PaymentMethodButton 
                             method="Tiền mặt" icon={FiDollarSign} label="Tiền mặt" 
@@ -322,9 +416,10 @@ const SalesPage: React.FC = () => {
                         />
                     </div>
 
+                    {/* Tiền khách trả */}
                     <div className="mb-3">
                         <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1.5 flex justify-between">
-                            <span>Khách thanh toán</span>
+                            <span>Khách trả / Cọc</span>
                             {changeAmount < 0 && <span className="text-red-500">Thiếu {formatCurrency(Math.abs(changeAmount))}</span>}
                         </label>
                         <div className="relative">
@@ -336,12 +431,11 @@ const SalesPage: React.FC = () => {
                                 placeholder="0 ₫"
                                 className="w-full pl-4 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xl font-bold text-primary-700 focus:ring-2 focus:ring-primary-500 outline-none text-right shadow-inner"
                                 allowNegative={false}
-                                isAllowed={(values) => (values.floatValue || 0) <= 100000000000}
                             />
                         </div>
                         {paymentMethod === 'Tiền mặt' && (
                             <div className="flex gap-2 mt-2 overflow-x-auto pb-1 custom-scrollbar">
-                                <button onClick={()=>setAmountPaid(totalAmount)} className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-bold border border-primary-100 whitespace-nowrap hover:bg-primary-100">Đủ tiền</button>
+                                <button onClick={()=>setAmountPaid(finalTotal)} className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-bold border border-primary-100 whitespace-nowrap hover:bg-primary-100">Đủ tiền</button>
                                 {[500000, 200000, 100000, 50000].map(val => (
                                     <QuickCashButton key={val} value={val} onClick={setAmountPaid} />
                                 ))}
@@ -349,6 +443,7 @@ const SalesPage: React.FC = () => {
                         )}
                     </div>
 
+                    {/* Tiền thừa / Ghi chú */}
                     <div className="flex items-center justify-between mb-3 min-h-[36px]">
                         {changeAmount > 0 ? (
                             <div className="flex flex-col">
@@ -373,8 +468,18 @@ const SalesPage: React.FC = () => {
                         </div>
                     )}
 
-                    <Button fullWidth size="lg" variant="primary" icon={<FiCheckCircle size={24} />} onClick={handleCheckout} disabled={cart.length === 0 || createOrderMutation.isPending} isLoading={createOrderMutation.isPending} className="py-3.5 text-xl font-bold shadow-lg shadow-primary-600/30 hover:shadow-primary-600/50 hover:-translate-y-0.5 transition-all">
-                        THANH TOÁN (F9)
+                    {/* Nút Thanh Toán */}
+                    <Button 
+                        fullWidth 
+                        size="lg" 
+                        variant="primary" 
+                        icon={isDelivery ? <FiTruck size={24}/> : <FiCheckCircle size={24} />} 
+                        onClick={handleCheckout} 
+                        disabled={cart.length === 0 || createInvoiceMutation.isPending} 
+                        isLoading={createInvoiceMutation.isPending} 
+                        className="py-3.5 text-xl font-bold shadow-lg shadow-primary-600/30 hover:shadow-primary-600/50 hover:-translate-y-0.5 transition-all"
+                    >
+                        {isDelivery ? 'TẠO ĐƠN GIAO (F9)' : 'THANH TOÁN (F9)'}
                     </Button>
                 </div>
             </div>
