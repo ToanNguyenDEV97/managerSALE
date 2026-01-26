@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../utils/api';
