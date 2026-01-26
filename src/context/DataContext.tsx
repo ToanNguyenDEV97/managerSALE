@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../utils/api'; // Import api từ utils
 
 // 1. Định nghĩa kiểu dữ liệu cho Context
 interface AppContextType {
@@ -9,15 +10,15 @@ interface AppContextType {
     login: (token: string, userData: any) => void;
     logout: () => void;
     
-    // Thêm State điều khiển Sidebar
+    // State điều khiển Sidebar
     isSidebarOpen: boolean;
     setIsSidebarOpen: (isOpen: boolean) => void;
     
-    // State chỉnh sửa sản phẩm (giữ nguyên logic cũ của bạn)
+    // State chỉnh sửa sản phẩm
     editingProduct: any | null;
     setEditingProduct: (product: any | null) => void;
     
-    // State thanh toán hóa đơn (giữ nguyên logic cũ của bạn)
+    // State thanh toán hóa đơn
     payingInvoiceId: string | null;
     setPayingInvoiceId: (id: string | null) => void;
 
@@ -37,6 +38,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         return savedUser ? JSON.parse(savedUser) : null;
     });
 
+    // --- BIẾN isAuthenticated ---
+    // Khai báo ở đây để dùng được trong useEffect và return
+    const isAuthenticated = !!token;
+
     // --- STATE SIDEBAR (MẶC ĐỊNH LÀ TRUE - MỞ) ---
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -45,11 +50,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
     const [companyInfo, setCompanyInfo] = useState<any>(null);
 
-    // Load thông tin công ty khi component mount
+    // Load thông tin công ty
     const fetchCompanyInfo = async () => {
         try {
-            // Giả sử bạn có API này (nếu chưa có thì xem Bước 4)
-            const res: any = await api('/api/organization/me'); 
+            // Gọi API lấy thông tin tổ chức
+            const res: any = await api('/organization/me'); 
             setCompanyInfo(res);
         } catch (error) {
             console.error("Lỗi lấy thông tin cửa hàng:", error);
@@ -61,10 +66,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             });
         }
     };
-    // Gọi hàm này khi app khởi chạy (trong useEffect)
+
+    // Gọi hàm này khi app khởi chạy hoặc khi trạng thái đăng nhập thay đổi
     useEffect(() => {
-        if (isAuthenticated) { // Chỉ lấy khi đã login
-             // ... các hàm fetch khác
+        if (isAuthenticated) { 
              fetchCompanyInfo();
         }
     }, [isAuthenticated]);
@@ -86,21 +91,22 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         navigate('/login');
     };
 
-    // Load Company Info (Giả lập hoặc gọi API thật)
+    // Hàm để các component con gọi khi cần cập nhật lại thông tin công ty (ví dụ sau khi lưu settings)
     const refreshCompanyInfo = () => {
-        // Gọi API lấy thông tin công ty nếu cần
-        // setCompanyInfo(...)
+        if (isAuthenticated) {
+            fetchCompanyInfo();
+        }
     };
 
     return (
         <AppContext.Provider value={{
-            isAuthenticated: !!token,
+            isAuthenticated, // Sử dụng biến đã khai báo
             token,
             user,
             login,
             logout,
-            isSidebarOpen,      // Export state
-            setIsSidebarOpen,   // Export hàm set
+            isSidebarOpen,
+            setIsSidebarOpen,
             editingProduct,
             setEditingProduct,
             payingInvoiceId,

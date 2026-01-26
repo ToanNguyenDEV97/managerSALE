@@ -3,7 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { 
     getOrganization, 
-    updateOrganization 
+    updateOrganization,
+    getMe,
 } = require('../controllers/organization.controller');
 
 // Các route này đã được bọc middleware 'protect' ở server.js
@@ -12,6 +13,6 @@ const {
 
 router.get('/', getOrganization);
 router.put('/', updateOrganization);
-router.get('/me', organizationController.getMe);
+router.get('/me', getMe);
 
 module.exports = router;

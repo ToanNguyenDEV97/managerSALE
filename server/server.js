@@ -55,6 +55,7 @@ app.use('/api/deliveries', protect, deliveryRoutes);
 app.use('/api/inventory-checks', protect, inventoryCheckRoutes);
 app.use('/api/cashflow-transactions', protect, cashFlowRoutes);
 app.use('/api/organization', protect, organizationRoutes);
+app.use('/api/dashboard', protect, require('./routes/dashboard.routes'));
 
 // 5. Serve Static Files (Production)
 // Chỉ phục vụ thư mục 'dist' (là thư mục chứa code Frontend sau khi đã build)
