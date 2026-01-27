@@ -1,14 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const validate = require('../middleware/validate');
-const { createDelivery, updateDelivery } = require('../validations/delivery.validation');
 const { checkId } = require('../validations/common.validation');
 const deliveryController = require('../controllers/delivery.controller');
 
+// 1. Lấy danh sách vận đơn
 router.get('/', deliveryController.getDeliveries);
-router.get('/:id', validate(checkId), deliveryController.getDeliveryById);
-router.post('/', validate(createDelivery), deliveryController.createDelivery);
-router.put('/:id', validate(updateDelivery), deliveryController.updateDelivery);
+
+// 2. Cập nhật trạng thái (QUAN TRỌNG: Đây là route đang bị thiếu)
+router.put('/:id/status', validate(checkId), deliveryController.updateStatus);
+
+// 3. Xóa vận đơn
 router.delete('/:id', validate(checkId), deliveryController.deleteDelivery);
 
 module.exports = router;

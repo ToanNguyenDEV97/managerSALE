@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const quoteController = require('../controllers/quote.controller');
 const validate = require('../middleware/validate');
-const { createQuote, updateQuote } = require('../validations/quote.validation');
 const { checkId } = require('../validations/common.validation');
-const controller = require('../controllers/quote.controller');
 
-router.get('/', controller.getQuotes);
-router.get('/:id', validate(checkId), controller.getQuoteById);
-router.post('/', validate(createQuote), controller.createQuote);
-router.put('/:id', validate(updateQuote), controller.updateQuote);
-router.delete('/:id', validate(checkId), controller.deleteQuote);
+// Định nghĩa các endpoints
+router.get('/', quoteController.getQuotes);
+router.post('/', quoteController.createQuote);
+router.put('/:id', validate(checkId), quoteController.updateQuote);
+router.delete('/:id', validate(checkId), quoteController.deleteQuote);
 
 module.exports = router;

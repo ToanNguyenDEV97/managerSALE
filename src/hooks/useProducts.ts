@@ -43,11 +43,11 @@ export const useDeleteProduct = () => {
 };
 
 // 5. Lấy lịch sử tồn kho
-export const useStockHistory = (productId: string) => {
+export const useProductStockHistory = (productId: string | null, page = 1) => {
     return useQuery({
-        queryKey: ['stock-history', productId],
-        queryFn: async () => await api(`/api/products/${productId}/history`),
-        enabled: !!productId 
+        queryKey: ['product-history', productId, page],
+        queryFn: () => api(`/api/products/${productId}/stock-history?page=${page}&limit=10`),
+        enabled: !!productId, // Chỉ chạy khi có productId
     });
 };
 

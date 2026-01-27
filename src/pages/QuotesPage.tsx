@@ -1,217 +1,245 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-    FiPlus, 
-    FiEdit, 
-    FiTrash2, 
-    FiPrinter, 
-    FiLoader, 
-    FiFileText, 
-    FiArrowRightCircle,
-    FiCheckCircle 
+    FiSearch, FiPlus, FiPrinter, FiEdit3, FiTrash2, FiFileText, 
+    FiCheckCircle, FiXCircle, FiClock, FiSend 
 } from 'react-icons/fi';
-import { useAppContext } from '../context/DataContext';
-import Pagination from '../components/common/Pagination';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import { useQuotes, useDeleteQuote, useConvertToOrder } from '../hooks/useQuotes';
+import { toast } from 'react-hot-toast';
+import moment from 'moment';
 
-// Import Modal Tạo/Sửa báo giá
-import QuoteModal from '../components/features/sales/QuoteModal'; 
+// Components & Hooks
+import { useQuotes, useDeleteQuote, useUpdateQuote } from '../hooks/useQuotes';
+import { useDebounce } from '../hooks/useDebounce';
+import { formatCurrency } from '../utils/currency';
+import { Button } from '../components/common/Button';
+import Pagination from '../components/common/Pagination';
+import ConfirmModal from '../components/common/ConfirmModal';
+import QuoteModal from '../components/features/sales/QuoteModal'; // Cần tạo file này nếu chưa có
+import PrintQuoteModal from '../components/print/PrintQuoteModal'; // Cần tạo file này nếu chưa có
+
+const QUOTE_STATUSES = ['Tất cả', 'Mới', 'Đã gửi', 'Đã chốt', 'Hủy'];
 
 const QuotesPage: React.FC = () => {
-    // Lấy state toàn cục
-    const { setEditingQuote, setPrintingQuoteId, editingQuote } = useAppContext(); 
-    
-    // State nội bộ
+    // --- STATE ---
     const [page, setPage] = useState(1);
-    const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
-    
-    // Hooks dữ liệu
-    const { data: quotesData, isLoading } = useQuotes(page);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('Tất cả');
+    const debouncedSearch = useDebounce(search, 500);
+
+    // Modal States
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isPrintOpen, setIsPrintOpen] = useState(false);
+    const [selectedQuote, setSelectedQuote] = useState<any>(null);
+    const [confirmConfig, setConfirmConfig] = useState({
+        isOpen: false, type: 'info' as 'info'|'danger', title: '', message: '', onConfirm: () => {}
+    });
+
+    // API Hooks
+    const { data: quotesData, isLoading } = useQuotes(page, debouncedSearch, statusFilter);
     const deleteMutation = useDeleteQuote();
-    const convertMutation = useConvertToOrder(); // Hook chuyển đổi
+    const updateMutation = useUpdateQuote();
 
-    // Xử lý dữ liệu trả về (tránh lỗi null/undefined)
-    const quotes = Array.isArray(quotesData) ? quotesData : (quotesData?.data || []);
-    const totalPages = Array.isArray(quotesData) ? 1 : (quotesData?.totalPages || 1);
-    const totalItems = Array.isArray(quotesData) ? quotes.length : (quotesData?.total || 0);
+    useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter]);
 
-    // Xử lý xóa
-    const handleConfirmDelete = async () => {
-        if (quoteToDelete) {
-            await deleteMutation.mutateAsync(quoteToDelete.id || quoteToDelete._id);
-            setQuoteToDelete(null);
-        }
+    // --- HANDLERS ---
+    const handleEdit = (quote: any) => {
+        setSelectedQuote(quote);
+        setIsFormOpen(true);
     };
 
-    // Xử lý chuyển đổi sang Đơn hàng
-    const handleConvert = async (quote: any) => {
-        if (window.confirm(`Bạn có chắc muốn chuyển Báo giá "${quote.quoteNumber}" thành Đơn hàng bán không?`)) {
-            await convertMutation.mutateAsync(quote.id || quote._id);
-        }
+    const handleCreate = () => {
+        setSelectedQuote(null);
+        setIsFormOpen(true);
     };
 
-    if (isLoading) return (
-        <div className="flex justify-center items-center h-[50vh]">
-            <FiLoader className="animate-spin text-3xl text-primary-600" />
-        </div>
-    );
+    const handlePrint = (quote: any) => {
+        setSelectedQuote(quote);
+        setIsPrintOpen(true);
+    };
+
+    const handleDelete = (id: string) => {
+        setConfirmConfig({
+            isOpen: true,
+            type: 'danger',
+            title: 'Xóa Báo Giá?',
+            message: 'Hành động này không thể hoàn tác.',
+            onConfirm: () => {
+                deleteMutation.mutate(id);
+                setConfirmConfig(prev => ({...prev, isOpen: false}));
+            }
+        });
+    };
+
+    const handleStatusChange = (id: string, currentStatus: string, newStatus: string) => {
+        setConfirmConfig({
+            isOpen: true,
+            type: 'info',
+            title: 'Cập nhật trạng thái',
+            message: `Chuyển trạng thái từ "${currentStatus}" sang "${newStatus}"?`,
+            onConfirm: () => {
+                updateMutation.mutate({ id, data: { status: newStatus } });
+                setConfirmConfig(prev => ({...prev, isOpen: false}));
+            }
+        });
+    };
+
+    // Helper render badge
+    const renderStatusBadge = (status: string) => {
+        const styles: any = {
+            'Mới': 'bg-blue-50 text-blue-600 border-blue-200',
+            'Đã gửi': 'bg-yellow-50 text-yellow-600 border-yellow-200',
+            'Đã chốt': 'bg-green-50 text-green-600 border-green-200',
+            'Hủy': 'bg-red-50 text-red-600 border-red-200',
+        };
+        const icons: any = {
+            'Mới': <FiFileText/>,
+            'Đã gửi': <FiSend/>,
+            'Đã chốt': <FiCheckCircle/>,
+            'Hủy': <FiXCircle/>,
+        };
+        return (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1 w-fit mx-auto ${styles[status] || 'bg-gray-100'}`}>
+                {icons[status]} {status}
+            </span>
+        );
+    };
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            
-            {/* 1. HEADER (Đồng bộ giao diện với OrdersPage) */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="p-6 max-w-[1600px] mx-auto min-h-screen bg-slate-50/50">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                        <FiFileText className="text-primary-600"/> Quản lý Báo giá
-                    </h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                        Tạo và theo dõi báo giá gửi khách hàng
-                    </p>
+                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <FiFileText className="text-blue-600"/> Quản lý Báo Giá
+                    </h1>
+                    <p className="text-slate-500 text-sm mt-1">Tạo và theo dõi báo giá gửi khách hàng</p>
                 </div>
-                
-                <div className="flex gap-3">
-                    <button 
-                        onClick={() => setEditingQuote('new')} 
-                        className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-all active:scale-95"
-                    >
-                        <FiPlus size={20} />
-                        <span>Tạo Báo giá</span>
-                    </button>
-                </div>
+                <Button onClick={handleCreate} icon={<FiPlus/>} variant="primary" className="shadow-lg shadow-blue-200">
+                    Tạo báo giá mới
+                </Button>
             </div>
 
-            {/* 2. BẢNG DANH SÁCH */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                        <thead className="bg-slate-50 dark:bg-slate-700/50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Mã BG</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Khách hàng</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Ngày tạo</th>
-                                <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng tiền</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {quotes.length > 0 ? quotes.map((quote: any) => {
-                                const isConverted = quote.status === 'Đã chuyển đổi';
-                                return (
-                                    <tr key={quote.id || quote._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                        <td className="px-6 py-4 font-bold text-primary-600">
-                                            {quote.quoteNumber}
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-800 dark:text-slate-200 font-medium">
-                                            {quote.customerName}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-slate-500">
-                                            {new Date(quote.issueDate).toLocaleDateString('vi-VN')}
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            {isConverted ? (
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
-                                                    <FiCheckCircle /> Đã chốt đơn
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 border border-blue-200">
-                                                    Mới
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-slate-200">
-                                            {quote.totalAmount.toLocaleString()} đ
-                                        </td>
-                                        
-                                        {/* CỘT THAO TÁC */}
-                                        <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                            
-                                            {/* Nút chuyển đổi (Chỉ hiện khi CHƯA chuyển đổi) */}
-                                            {!isConverted && (
-                                                <button 
-                                                    onClick={() => handleConvert(quote)}
-                                                    className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
-                                                    title="Chuyển thành Đơn hàng"
-                                                >
-                                                    <FiArrowRightCircle size={18} />
-                                                </button>
-                                            )}
-
-                                            <button 
-                                                onClick={() => setPrintingQuoteId(quote.id || quote._id)} 
-                                                className="p-2 text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-                                                title="In báo giá"
-                                            >
-                                                <FiPrinter size={18} />
-                                            </button>
-                                            
-                                            {/* Ẩn sửa/xóa nếu đã chuyển đổi để bảo vệ dữ liệu */}
-                                            {!isConverted && (
-                                                <>
-                                                    <button 
-                                                        onClick={() => setEditingQuote(quote)} 
-                                                        className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
-                                                        title="Chỉnh sửa"
-                                                    >
-                                                        <FiEdit size={18} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => setQuoteToDelete(quote)} 
-                                                        className="p-2 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-                                                        title="Xóa"
-                                                    >
-                                                        <FiTrash2 size={18} />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            }) : (
-                                <tr>
-                                    <td colSpan={6} className="text-center py-12 text-slate-500 italic flex flex-col items-center justify-center">
-                                        <FiFileText size={40} className="mb-2 opacity-20" />
-                                        Chưa có báo giá nào được tạo.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-                
-                {/* Phân trang */}
-                <div className="border-t border-slate-200 dark:border-slate-700 p-4">
-                    <Pagination 
-                        currentPage={page} 
-                        totalPages={totalPages} 
-                        onPageChange={setPage} 
-                        totalItems={totalItems} 
-                        itemsPerPage={10} 
+            {/* Toolbar */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-2 z-10">
+                <div className="relative w-full md:w-96 group">
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                    <input 
+                        type="text" 
+                        placeholder="Tìm mã báo giá, tên khách..." 
+                        className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+                        value={search} onChange={(e) => setSearch(e.target.value)}
                     />
                 </div>
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto no-scrollbar">
+                    {QUOTE_STATUSES.map(st => (
+                        <button key={st} onClick={() => setStatusFilter(st)}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all border
+                                ${statusFilter === st ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-blue-600'}
+                            `}
+                        >
+                            {st}
+                        </button>
+                    ))}
+                </div>
             </div>
-            
-            {/* Modal Xác nhận xóa */}
-            {quoteToDelete && (
-                <ConfirmationModal 
-                    isOpen={!!quoteToDelete} 
-                    onClose={() => setQuoteToDelete(null)} 
-                    onConfirm={handleConfirmDelete} 
-                    title="Xóa báo giá"
-                >
-                    Bạn có chắc chắn muốn xóa báo giá số <strong>{quoteToDelete.quoteNumber}</strong>?<br/>
-                    <span className="text-sm text-red-500">Hành động này không thể hoàn tác.</span>
-                </ConfirmationModal>
-            )}
 
-            {/* Modal Tạo/Sửa Báo giá (Chỉ hiện khi state editingQuote có dữ liệu) */}
-            {(editingQuote === 'new' || (editingQuote && typeof editingQuote === 'object')) && (
+            {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+                {isLoading ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
+                        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <span>Đang tải dữ liệu...</span>
+                    </div>
+                ) : !quotesData?.data || quotesData.data.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                        <div className="bg-slate-100 p-4 rounded-full mb-4"><FiFileText size={40}/></div>
+                        <p>Không có báo giá nào.</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto flex-1">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-6 py-4">Mã BG</th>
+                                        <th className="px-6 py-4">Khách Hàng</th>
+                                        <th className="px-6 py-4 text-center">Tổng Tiền</th>
+                                        <th className="px-6 py-4 text-center">Hiệu Lực</th>
+                                        <th className="px-6 py-4 text-center">Trạng Thái</th>
+                                        <th className="px-6 py-4 text-right">Thao Tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {quotesData.data.map((quote: any) => (
+                                        <tr key={quote.id} className="hover:bg-blue-50/40 transition-colors group">
+                                            <td className="px-6 py-4 font-bold text-blue-600 cursor-pointer hover:underline" onClick={() => handlePrint(quote)}>
+                                                {quote.quoteNumber}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-slate-800">{quote.customerName}</div>
+                                                <div className="text-xs text-slate-500">{quote.customerPhone}</div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center font-bold text-slate-700">
+                                                {formatCurrency(quote.finalAmount)}
+                                            </td>
+                                            <td className="px-6 py-4 text-center text-xs text-slate-500">
+                                                {quote.expiryDate ? moment(quote.expiryDate).format('DD/MM/YYYY') : '---'}
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                {renderStatusBadge(quote.status)}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => handlePrint(quote)} className="p-2 hover:bg-indigo-50 text-indigo-600 rounded" title="In"><FiPrinter/></button>
+                                                    {quote.status === 'Mới' && (
+                                                        <>
+                                                            <button onClick={() => handleStatusChange(quote.id, quote.status, 'Đã gửi')} className="p-2 hover:bg-yellow-50 text-yellow-600 rounded" title="Đánh dấu đã gửi"><FiSend/></button>
+                                                            <button onClick={() => handleEdit(quote)} className="p-2 hover:bg-blue-50 text-blue-600 rounded" title="Sửa"><FiEdit3/></button>
+                                                        </>
+                                                    )}
+                                                    {quote.status === 'Đã gửi' && (
+                                                        <button onClick={() => handleStatusChange(quote.id, quote.status, 'Đã chốt')} className="p-2 hover:bg-green-50 text-green-600 rounded" title="Chốt đơn"><FiCheckCircle/></button>
+                                                    )}
+                                                    <button onClick={() => handleDelete(quote.id)} className="p-2 hover:bg-red-50 text-red-600 rounded" title="Xóa"><FiTrash2/></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {quotesData.totalPages > 1 && (
+                            <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0">
+                                <Pagination currentPage={page} totalPages={quotesData.totalPages} onPageChange={setPage} />
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Modals */}
+            {isFormOpen && (
                 <QuoteModal 
-                    isOpen={true}
-                    onClose={() => setEditingQuote(null)}
+                    isOpen={isFormOpen} 
+                    onClose={() => setIsFormOpen(false)} 
+                    quote={selectedQuote} 
                 />
             )}
+            
+            {isPrintOpen && selectedQuote && (
+                <PrintQuoteModal 
+                    quote={selectedQuote} 
+                    onClose={() => setIsPrintOpen(false)} 
+                />
+            )}
+
+            <ConfirmModal 
+                isOpen={confirmConfig.isOpen} 
+                type={confirmConfig.type} 
+                title={confirmConfig.title} 
+                message={confirmConfig.message} 
+                onClose={() => setConfirmConfig(prev => ({...prev, isOpen: false}))} 
+                onConfirm={confirmConfig.onConfirm} 
+            />
         </div>
     );
 };

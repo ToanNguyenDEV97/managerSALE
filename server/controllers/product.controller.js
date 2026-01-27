@@ -81,9 +81,31 @@ exports.deleteProduct = async (req, res) => {
 };
 
 // 5. Lấy lịch sử kho của 1 SP
-exports.getProductHistory = async (req, res) => {
+exports.getProductStockHistory = async (req, res) => {
     try {
-        const history = await StockHistory.find({ organizationId: req.organizationId, productId: req.params.productId }).sort({ date: -1 }).limit(100);
-        res.json(history);
-    } catch (err) { res.status(500).json({ message: err.message }); }
+        const { id } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+
+        const query = { 
+            productId: id, 
+            organizationId: req.organizationId 
+        };
+
+        const total = await StockHistory.countDocuments(query);
+        const history = await StockHistory.find(query)
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .populate('createdBy', 'fullName');
+
+        res.json({
+            data: history,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit)
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 };

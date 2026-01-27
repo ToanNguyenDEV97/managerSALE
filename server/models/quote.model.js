@@ -1,40 +1,46 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-const { QUOTE_STATUS } = require('../utils/constants'); // Import
-
-const quoteItemSchema = new Schema({
-    productId: { type: String, required: true },
-    name: { type: String, required: true },
-    quantity: { type: Number, required: true },
-    price: { type: Number, required: true },
-    vat: { type: Number, required: true },
-}, { _id: false });
-
 const quoteSchema = new Schema({
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
-    quoteNumber: { type: String, required: true }, // Bỏ unique ở đây
-    customerId: { type: String, required: true },
+    quoteNumber: { type: String, required: true }, // Mã báo giá (BG001)
+    
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer' },
     customerName: { type: String, required: true },
-    issueDate: { type: String, required: true },
-    items: [quoteItemSchema],
-    totalAmount: { type: Number, required: true },
-    status: { type: String, required: true, enum: Object.values(QUOTE_STATUS), default: QUOTE_STATUS.NEW },
+    customerPhone: { type: String },
+    customerAddress: { type: String },
+
+    items: [{
+        productId: { type: Schema.Types.ObjectId, ref: 'Product' },
+        sku: String,
+        name: String,
+        unit: String,
+        quantity: { type: Number, required: true },
+        price: { type: Number, required: true }, // Giá báo
+        total: Number
+    }],
+
+    totalAmount: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    finalAmount: { type: Number, default: 0 },
+
+    issueDate: { type: Date, default: Date.now }, // Ngày báo giá
+    expiryDate: { type: Date }, // Ngày hết hạn
+
+    status: { 
+        type: String, 
+        enum: ['Mới', 'Đã gửi', 'Đã chốt', 'Hủy'], 
+        default: 'Mới' 
+    },
+    
+    note: { type: String, default: '' },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
 }, {
     timestamps: true
 });
 
-// Thêm Compound Index: quoteNumber phải là duy nhất TRONG CÙNG MỘT TỔ CHỨC
-quoteSchema.index({ organizationId: 1, quoteNumber: 1 }, { unique: true });
+// Ảo hóa id
+quoteSchema.virtual('id').get(function(){ return this._id.toHexString(); });
+quoteSchema.set('toJSON', { virtuals: true, transform: (doc, ret) => { delete ret._id; delete ret.__v; } });
 
-quoteSchema.virtual('id').get(function(){
-    return this._id.toHexString();
-});
-
-quoteSchema.set('toJSON', {
-    virtuals: true,
-    transform: function (doc, ret) { delete ret._id; delete ret.__v; }
-});
-
-const Quote = mongoose.model('Quote', quoteSchema);
-module.exports = Quote;
+module.exports = mongoose.model('Quote', quoteSchema);

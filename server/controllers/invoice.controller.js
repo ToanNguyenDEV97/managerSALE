@@ -2,13 +2,14 @@ const mongoose = require('mongoose');
 const Invoice = require('../models/invoice.model');
 const Customer = require('../models/customer.model');
 const Product = require('../models/product.model');
+const StockHistory = require('../models/stockHistory.model');
 const CashFlowTransaction = require('../models/cashFlowTransaction.model');
 const Delivery = require('../models/delivery.model');
 const { getNextSequence } = require('../utils/sequence');
-const { changeStock } = require('../utils/stockUtils');
-const { PREFIXES } = require('../utils/constants');
+const { changeStock } = require('../utils/stockUtils'); // Dùng cho deleteInvoice
+const { PREFIXES, DELIVERY_STATUS } = require('../utils/constants');
 
-// 1. Lấy danh sách
+// 1. LẤY DANH SÁCH HÓA ĐƠN
 exports.getInvoices = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -17,7 +18,7 @@ exports.getInvoices = async (req, res) => {
         const organizationId = req.organizationId;
 
         let query = { organizationId };
-        
+
         if (search) {
             query.$or = [
                 { invoiceNumber: { $regex: search, $options: 'i' } },
@@ -32,9 +33,9 @@ exports.getInvoices = async (req, res) => {
         }
 
         if (startDate && endDate) {
-            query.createdAt = { 
-                $gte: new Date(startDate), 
-                $lte: new Date(new Date(endDate).setHours(23,59,59)) 
+            query.createdAt = {
+                $gte: new Date(startDate),
+                $lte: new Date(new Date(endDate).setHours(23, 59, 59))
             };
         }
 
@@ -45,24 +46,33 @@ exports.getInvoices = async (req, res) => {
             .limit(limit)
             .populate('items.productId', 'sku unit');
 
-        res.json({ data: invoices, total, totalPages: Math.ceil(total / limit), currentPage: page });
-    } catch (err) { res.status(500).json({ message: err.message }); }
+        res.json({
+            data: invoices,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 };
 
-// 2. Chi tiết
+// 2. CHI TIẾT HÓA ĐƠN
 exports.getInvoiceById = async (req, res) => {
     try {
         const { organizationId } = req;
         const invoice = await Invoice.findOne({ _id: req.params.id, organizationId })
-            // [THÊM DÒNG NÀY] Lấy chi tiết khách hàng (tên, sđt, địa chỉ, công ty)
-            .populate('customerId', 'name phone address companyName taxCode') 
+            .populate('customerId', 'name phone address companyName taxCode')
             .populate('items.productId', 'sku name unit');
+
         if (!invoice) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
         res.json(invoice);
-    } catch (err) { res.status(500).json({ message: err.message }); }
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 };
 
-// 3. TẠO HÓA ĐƠN
+// 3. TẠO HÓA ĐƠN MỚI (Logic Thẻ kho đã được sửa)
 exports.createInvoice = async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
@@ -70,7 +80,8 @@ exports.createInvoice = async (req, res) => {
 
     try {
         const { customerId, items, discountAmount, paymentAmount, paymentMethod, deliveryInfo, note } = req.body;
-        
+
+        // Lấy thông tin khách hàng
         let customer = null;
         let customerName = 'Khách lẻ';
         if (customerId) {
@@ -78,86 +89,113 @@ exports.createInvoice = async (req, res) => {
             if (customer) customerName = customer.name;
         }
 
+        // Tạo mã hóa đơn trước
+        const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
+
         let processedItems = [];
         let totalAmount = 0;
 
+        // --- BẮT ĐẦU VÒNG LẶP XỬ LÝ SẢN PHẨM & KHO ---
         for (const item of items) {
-            const product = await Product.findOne({ _id: item.productId, organizationId }).session(session);
-            if (!product) throw new Error(`Sản phẩm ID ${item.productId} không tồn tại`);
+            const productId = item.productId || item.id;
+            const quantitySold = Number(item.quantity);
+            const price = Number(item.price);
 
-            await changeStock({
-                session, organizationId, productId: item.productId, quantityChange: -item.quantity,
-                type: 'Xuất hàng', referenceNumber: 'POS', 
-                note: `Bán cho ${customerName}`
-            });
+            // 1. Tìm sản phẩm (Bắt buộc dùng session)
+            const product = await Product.findOne({ _id: productId, organizationId }).session(session);
 
-            const itemTotal = item.quantity * item.price;
-            totalAmount += itemTotal;
+            if (!product) {
+                throw new Error(`Sản phẩm ID ${productId} không tồn tại hoặc đã bị xóa`);
+            }
 
+            // 2. Tính toán tồn kho chính xác
+            const currentStock = Number(product.quantity) || 0;
+            const newStock = currentStock - quantitySold;
+
+            // 3. Cập nhật tồn kho vào DB
+            product.quantity = newStock;
+            await product.save({ session });
+
+            // 4. GHI THẺ KHO (StockHistory) - Quan trọng để hiển thị đúng
+            await StockHistory.create([{
+                organizationId,
+                productId: product._id,
+                type: 'export',               // Loại: Xuất kho
+                quantity: -quantitySold,      // Số lượng: Số âm
+                oldStock: currentStock,       // Tồn cũ
+                newStock: newStock,           // Tồn mới
+                reference: invoiceNumber,     // Mã hóa đơn
+                note: `Bán hàng: ${customerName}`,
+                createdBy: req.user.userId
+            }], { session });
+
+            // 5. Thêm vào danh sách item của hóa đơn
             processedItems.push({
                 productId: product._id,
                 name: product.name,
-                quantity: item.quantity,
-                price: item.price,
-                costPrice: product.buyPrice || 0,
-                discount: item.discount || 0
+                sku: product.sku,
+                unit: product.unit,
+                quantity: quantitySold,
+                price: price,
+                total: quantitySold * price
             });
-        }
 
+            totalAmount += (quantitySold * price);
+        }
+        // --- KẾT THÚC VÒNG LẶP ---
+
+        // Tính toán tiền
         const shipFee = deliveryInfo?.isDelivery ? (Number(deliveryInfo.shipFee) || 0) : 0;
         const finalAmount = totalAmount - (Number(discountAmount) || 0) + shipFee;
-        
+
         let status = 'Chưa thanh toán';
         if (paymentAmount >= finalAmount) status = 'Đã thanh toán';
         else if (paymentAmount > 0) status = 'Thanh toán một phần';
 
-        const invoiceNumber = await getNextSequence(Invoice, 'HD', organizationId);
-
-        // Lưu Hóa đơn
+        // Lưu Hóa Đơn
         const newInvoice = new Invoice({
-            invoiceNumber, organizationId,
-            customerId: customerId || null, customerName,
+            invoiceNumber,
+            organizationId,
+            customerId: customerId || null,
+            customerName,
+            customerPhone: req.body.customerPhone, // Lưu thêm SĐT nếu có
             issueDate: new Date(),
             items: processedItems,
-            totalAmount, discountAmount: discountAmount || 0, finalAmount,
+            totalAmount,
+            discountAmount: discountAmount || 0,
+            finalAmount,
             paidAmount: paymentAmount || 0,
             paymentMethod: paymentMethod || 'Tiền mặt',
-            status, note,
+            status,
+            note,
+            createdBy: req.user.userId,
             isDelivery: deliveryInfo?.isDelivery || false,
             delivery: deliveryInfo?.isDelivery ? { ...deliveryInfo, status: 'PENDING' } : undefined
         });
+
         await newInvoice.save({ session });
 
-        // [MỚI] === TỰ ĐỘNG TẠO PHIẾU GIAO HÀNG (DELIVERY) ===
+        // Tự động tạo Phiếu Giao Hàng (Nếu có)
         if (deliveryInfo?.isDelivery) {
-            const Delivery = require('../models/delivery.model'); // Đảm bảo đã import
-            const { DELIVERY_STATUS } = require('../utils/constants'); // Import constant
-
-            const deliveryNumber = await getNextSequence(Delivery, 'VC', organizationId); // Đổi tên biến thành deliveryNumber cho khớp model
-            
+            const deliveryNumber = await getNextSequence(Delivery, 'VC', organizationId);
             const codAmount = Math.max(0, finalAmount - (paymentAmount || 0));
 
             const newDelivery = new Delivery({
                 organizationId,
-                deliveryNumber: deliveryNumber, // [Mapping đúng] deliveryCode -> deliveryNumber
-                invoiceId: newInvoice._id.toString(), // Chuyển ObjectId sang String
-                
-                customerId: customerId || 'GUEST', // Xử lý trường hợp khách lẻ
+                deliveryNumber,
+                invoiceId: newInvoice._id.toString(),
+                customerId: customerId || 'GUEST',
                 customerName: customerName,
-                customerPhone: deliveryInfo.phone, // [Mapping đúng] phone -> customerPhone
-                customerAddress: deliveryInfo.address, // [Mapping đúng] address -> customerAddress
-                
-                issueDate: new Date(),   // [Thêm] Ngày tạo
-                deliveryDate: new Date(), // [Thêm] Ngày giao dự kiến (mặc định hôm nay)
-                
-                items: processedItems, // Đã thêm vào model
-                shipFee: shipFee,      // Đã thêm vào model
-                codAmount: codAmount,  // Đã thêm vào model
-                
-                status: DELIVERY_STATUS.PENDING, // [SỬA QUAN TRỌNG] Dùng Value ('Chờ giao') thay vì Key ('PENDING')
-                
-                driverName: deliveryInfo.shipperName || '', 
-                notes: note // [Mapping đúng] note -> notes
+                customerPhone: deliveryInfo.phone,
+                customerAddress: deliveryInfo.address,
+                issueDate: new Date(),
+                deliveryDate: new Date(),
+                items: processedItems,
+                shipFee: shipFee,
+                codAmount: codAmount,
+                status: DELIVERY_STATUS?.PENDING || 'Chờ giao',
+                driverName: deliveryInfo.shipperName || '',
+                notes: note
             });
             await newDelivery.save({ session });
         }
@@ -165,34 +203,44 @@ exports.createInvoice = async (req, res) => {
         // Cập nhật công nợ khách hàng
         const debtChange = finalAmount - (paymentAmount || 0);
         if (customer && debtChange > 0) {
-            await Customer.findByIdAndUpdate(customerId, { $inc: { totalDebt: debtChange } }).session(session);
+            await Customer.findByIdAndUpdate(
+                customerId,
+                { $inc: { totalDebt: debtChange } }
+            ).session(session);
         }
 
+        // Lưu phiếu thu (Nếu có thanh toán)
         let savedVoucher = null;
         if (paymentAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
             savedVoucher = new CashFlowTransaction({
-                transactionNumber, type: 'thu', date: new Date(), 
+                transactionNumber,
+                type: 'thu',
+                date: new Date(),
                 amount: paymentAmount,
                 paymentMethod: paymentMethod || 'Tiền mặt',
-                payerReceiverName: customerName, 
+                payerReceiverName: customerName,
                 description: `Thu tiền bán hàng ${invoiceNumber}`,
-                category: 'Doanh thu bán hàng', referenceId: newInvoice._id, organizationId 
+                category: 'Doanh thu bán hàng',
+                referenceId: newInvoice._id,
+                organizationId
             });
             await savedVoucher.save({ session });
         }
-        
+
         await session.commitTransaction();
         res.status(201).json({ newInvoice, voucher: savedVoucher });
 
-    } catch (err) { 
-        await session.abortTransaction(); 
-        res.status(400).json({ message: err.message }); 
-    } finally { session.endSession(); }
+    } catch (err) {
+        await session.abortTransaction();
+        console.error("Create Invoice Error:", err);
+        res.status(500).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
 };
 
-// 4. TRẢ HÀNG / HỦY HÓA ĐƠN (Soft Delete)
-// [SỬA LỖI] Đổi tên từ deleteInvoice -> returnInvoice để khớp với route
+// 4. HỦY HÓA ĐƠN / TRẢ HÀNG
 exports.returnInvoice = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -201,32 +249,56 @@ exports.returnInvoice = async (req, res) => {
         if (!invoice) throw new Error('Hóa đơn không tồn tại');
         if (invoice.status === 'Hủy') throw new Error('Hóa đơn này đã hủy rồi');
 
-        // Hoàn kho
+        // --- HOÀN KHO & GHI THẺ KHO ---
         for (const item of invoice.items) {
-            await changeStock({
-                session, organizationId: req.organizationId, productId: item.productId, 
-                quantityChange: item.quantity, 
-                type: 'Nhập hàng trả', 
-                referenceNumber: invoice.invoiceNumber, note: 'Hủy hóa đơn bán hàng'
-            });
+            const product = await Product.findOne({ _id: item.productId, organizationId: req.organizationId }).session(session);
+            
+            if (product) {
+                const quantityReturn = Number(item.quantity);
+                const currentStock = Number(product.quantity) || 0;
+                const newStock = currentStock + quantityReturn; // Cộng lại kho
+
+                product.quantity = newStock;
+                await product.save({ session });
+
+                // Ghi thẻ kho (Loại: return)
+                await StockHistory.create([{
+                    organizationId: req.organizationId,
+                    productId: product._id,
+                    type: 'return',             // Loại: Trả hàng
+                    quantity: quantityReturn,   // Số dương (cộng lại)
+                    oldStock: currentStock,
+                    newStock: newStock,
+                    reference: invoice.invoiceNumber,
+                    note: 'Hủy hóa đơn / Khách trả hàng',
+                    createdBy: req.user.userId
+                }], { session });
+            }
         }
 
-        // Trừ nợ khách
+        // Trừ nợ khách (nếu đã ghi nợ)
         const currentDebtOfInvoice = invoice.finalAmount - invoice.paidAmount;
         if (invoice.customerId && currentDebtOfInvoice > 0) {
-            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -currentDebtOfInvoice } }).session(session);
+            await Customer.findByIdAndUpdate(
+                invoice.customerId, 
+                { $inc: { totalDebt: -currentDebtOfInvoice } }
+            ).session(session);
         }
 
-        // Hoàn tiền nếu cần
+        // Hoàn tiền (Nếu khách đã trả tiền)
         if (invoice.paidAmount > 0) {
             const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT_SLIP, req.organizationId);
             await new CashFlowTransaction({
-                transactionNumber, type: 'chi', date: new Date(),
+                transactionNumber,
+                type: 'chi',
+                date: new Date(),
                 amount: invoice.paidAmount,
                 paymentMethod: 'Tiền mặt',
                 payerReceiverName: invoice.customerName,
                 description: `Hoàn tiền do hủy đơn ${invoice.invoiceNumber}`,
-                category: 'Hoàn tiền', referenceId: invoice._id, organizationId: req.organizationId
+                category: 'Hoàn tiền',
+                referenceId: invoice._id,
+                organizationId: req.organizationId
             }).save({ session });
         }
 
@@ -236,47 +308,67 @@ exports.returnInvoice = async (req, res) => {
 
         await session.commitTransaction();
         res.json({ message: 'Đã hủy hóa đơn, hoàn kho thành công.' });
-    } catch (err) { await session.abortTransaction(); res.status(500).json({ message: err.message }); } 
-    finally { session.endSession(); }
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(500).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
 };
 
-// 5. Thanh toán công nợ
+// 5. THANH TOÁN CÔNG NỢ
 exports.payInvoice = async (req, res) => {
     const { organizationId } = req;
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const { amount } = req.body; 
+        const { amount } = req.body;
         const invoice = await Invoice.findOne({ _id: req.params.id, organizationId }).session(session);
         if (!invoice) throw new Error('Hóa đơn không tồn tại');
 
         const currentDebt = invoice.totalAmount - (invoice.paidAmount || 0);
         const payAmount = parseInt(amount);
-        if (payAmount > currentDebt) throw new Error(`Khách chỉ còn nợ ${currentDebt.toLocaleString()}đ.`);
+
+        if (payAmount > currentDebt + 1000) { // Cho phép lệch nhỏ do làm tròn
+             throw new Error(`Khách chỉ còn nợ ${currentDebt.toLocaleString()}đ.`);
+        }
 
         invoice.paidAmount = (invoice.paidAmount || 0) + payAmount;
-        if (invoice.paidAmount >= invoice.totalAmount) invoice.status = 'Đã thanh toán'; 
+        if (invoice.paidAmount >= invoice.finalAmount) invoice.status = 'Đã thanh toán';
         else invoice.status = 'Thanh toán một phần';
+        
         await invoice.save({ session });
 
         if (invoice.customerId) {
-            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -payAmount } }).session(session);
+            await Customer.findByIdAndUpdate(
+                invoice.customerId, 
+                { $inc: { totalDebt: -payAmount } }
+            ).session(session);
         }
 
         const transactionNumber = await getNextSequence(CashFlowTransaction, PREFIXES.PAYMENT, organizationId);
         await new CashFlowTransaction({
-            transactionNumber, type: 'thu', date: new Date(), amount: payAmount,
-            payerReceiverName: invoice.customerName, description: `Thu nợ hóa đơn ${invoice.invoiceNumber}`,
-            category: 'Thu nợ khách hàng', organizationId
+            transactionNumber,
+            type: 'thu',
+            date: new Date(),
+            amount: payAmount,
+            payerReceiverName: invoice.customerName,
+            description: `Thu nợ hóa đơn ${invoice.invoiceNumber}`,
+            category: 'Thu nợ khách hàng',
+            organizationId
         }).save({ session });
 
         await session.commitTransaction();
         res.json({ message: 'Thanh toán thành công', invoice });
-    } catch (err) { await session.abortTransaction(); res.status(500).json({ message: err.message }); } 
-    finally { session.endSession(); }
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(500).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
 };
 
-// 6. Xóa hóa đơn (Xóa vĩnh viễn)
+// 6. XÓA HÓA ĐƠN (Xóa vĩnh viễn - Dùng cẩn thận)
 exports.deleteInvoice = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -284,42 +376,62 @@ exports.deleteInvoice = async (req, res) => {
         const invoice = await Invoice.findOne({ _id: req.params.id, organizationId: req.organizationId }).session(session);
         if (!invoice) throw new Error('Hóa đơn không tồn tại');
 
+        // Hoàn kho (Dùng hàm changeStock tiện ích hoặc viết tay cũng được, ở đây dùng changeStock cho gọn)
         for (const item of invoice.items) {
             await changeStock({
-                session, organizationId: req.organizationId, productId: item.productId, 
-                quantityChange: item.quantity, type: 'Hủy hóa đơn', 
-                referenceNumber: invoice.invoiceNumber, note: 'Xóa đơn bán hàng'
+                session,
+                organizationId: req.organizationId,
+                productId: item.productId,
+                quantityChange: item.quantity, // Cộng lại kho
+                type: 'adjustment', // Loại điều chỉnh
+                referenceNumber: invoice.invoiceNumber,
+                note: 'Xóa vĩnh viễn hóa đơn'
             });
         }
 
-        const debtAmount = invoice.totalAmount - invoice.paidAmount;
+        const debtAmount = invoice.finalAmount - invoice.paidAmount;
         if (invoice.customerId && debtAmount > 0) {
-            await Customer.findByIdAndUpdate(invoice.customerId, { $inc: { totalDebt: -debtAmount } }).session(session);
+            await Customer.findByIdAndUpdate(
+                invoice.customerId, 
+                { $inc: { totalDebt: -debtAmount } }
+            ).session(session);
         }
 
         await Invoice.deleteOne({ _id: invoice._id }).session(session);
         await session.commitTransaction();
         res.json({ message: 'Đã xóa hóa đơn thành công' });
-    } catch (err) { await session.abortTransaction(); res.status(500).json({ message: err.message }); } 
-    finally { session.endSession(); }
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(500).json({ message: err.message });
+    } finally {
+        session.endSession();
+    }
 };
 
-// 7. Lịch sử thanh toán
+// 7. LỊCH SỬ THANH TOÁN
 exports.getInvoiceHistory = async (req, res) => {
     try {
         const history = await CashFlowTransaction.find({
             organizationId: req.organizationId,
-            description: { $regex: req.params.invoiceNumber, $options: 'i' } 
-        }).sort({ createdAt: -1 }); 
+            description: { $regex: req.params.invoiceNumber, $options: 'i' }
+        }).sort({ createdAt: -1 });
         res.json(history);
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 };
 
-// 8. Cập nhật hóa đơn
+// 8. CẬP NHẬT HÓA ĐƠN
 exports.updateInvoice = async (req, res) => {
     try {
-        const updated = await Invoice.findOneAndUpdate({ _id: req.params.id, organizationId: req.organizationId }, req.body, { new: true });
+        const updated = await Invoice.findOneAndUpdate(
+            { _id: req.params.id, organizationId: req.organizationId }, 
+            req.body, 
+            { new: true }
+        );
         if (!updated) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
         res.json(updated);
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 };

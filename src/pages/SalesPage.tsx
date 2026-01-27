@@ -1,21 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     FiSearch, FiShoppingCart, FiTrash2, FiPlus, FiMinus, 
-    FiUser, FiCheckCircle, FiFilter, FiAlertCircle, FiCreditCard, FiDollarSign, FiPrinter, FiFileText,
-    FiTruck, FiMapPin, FiPhone // Icon cho giao hàng
+    FiUser, FiCheckCircle, FiDollarSign, FiCreditCard, FiFileText, 
+    FiTruck, FiMapPin, FiPhone, FiX, FiChevronDown, FiBox
 } from 'react-icons/fi';
-import { useQuery } from '@tanstack/react-query'; 
 import { NumericFormat } from 'react-number-format';
 import { Button } from '../components/common/Button';
-import { useProducts } from '../hooks/useProducts';
+import { useProducts, useCategories } from '../hooks/useProducts';
 import { useAllCustomers } from '../hooks/useCustomers'; 
 import { useSaveInvoice } from '../hooks/useInvoices'; 
 import { useDebounce } from '../hooks/useDebounce';
 import { toast } from 'react-hot-toast';
 import { formatCurrency } from '../utils/currency';
-import { api } from '../utils/api'; 
 import QuickCustomerModal from '../components/features/partners/QuickCustomerModal';
 import PrintInvoiceModal from '../components/print/PrintInvoiceModal';
+import Pagination from '../components/common/Pagination'; // [MỚI] Import Pagination
 
 // --- INTERFACES ---
 interface CartItem {
@@ -28,21 +27,23 @@ interface CartItem {
 }
 
 interface Category {
-    _id: string;
+    id?: string;
+    _id?: string;
     name: string;
 }
 
 interface Product {
-    _id: string;
+    id?: string;
+    _id?: string;
     name: string;
     sku: string;
-    retailPrice: number;
-    quantity: number; // Tồn kho
-    category?: { _id: string; name: string };
+    price: number; 
+    stock: number;
+    category?: string;
     image?: string;
 }
 
-// --- HELPER COMPONENTS (Đưa ra ngoài để tối ưu hiệu năng) ---
+// --- HELPER COMPONENTS ---
 const PaymentMethodButton = ({ method, icon: Icon, label, currentMethod, setMethod }: any) => (
     <button
         onClick={() => setMethod(method)}
@@ -61,7 +62,7 @@ const PaymentMethodButton = ({ method, icon: Icon, label, currentMethod, setMeth
 const QuickCashButton = ({ value, onClick }: { value: number, onClick: (val: number) => void }) => (
     <button
         onClick={() => onClick(value)}
-        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold border border-slate-200 transition-colors"
+        className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold border border-slate-200 transition-colors"
     >
         {value.toLocaleString('vi-VN')}
     </button>
@@ -75,88 +76,133 @@ const SalesPage: React.FC = () => {
     const debouncedSearch = useDebounce(searchQuery, 300);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    
+    // [MỚI] State phân trang
+    const [page, setPage] = useState(1);
 
     // 2. State Khách hàng & Thanh toán
     const [customerId, setCustomerId] = useState<string | null>(null);
     const [customerName, setCustomerName] = useState('Khách lẻ');
-    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'debt'>('cash');
+    
+    // State tìm kiếm khách hàng
+    const [customerSearchTerm, setCustomerSearchTerm] = useState(''); 
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const customerDropdownRef = useRef<HTMLDivElement>(null);
+
+    const [paymentMethod, setPaymentMethod] = useState<string>('Tiền mặt');
     const [amountPaid, setAmountPaid] = useState<number>(0);
     const [discount, setDiscount] = useState<number>(0);
     const [orderNote, setOrderNote] = useState('');
 
-    // 3. State Giao hàng (Delivery)
+    // 3. State Giao hàng
     const [isDelivery, setIsDelivery] = useState(false);
     const [shipFee, setShipFee] = useState<number>(0);
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [recipientPhone, setRecipientPhone] = useState('');
     const [shipperName, setShipperName] = useState('');
 
-    // 4. State Modal (Khách hàng & In ấn)
+    // 4. State Modal
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
-    const [createdInvoice, setCreatedInvoice] = useState<any>(null);
+    const [createdInvoiceId, setCreatedInvoiceId] = useState<string | null>(null);
 
     // --- HOOKS ---
-    const { data: productsData, isLoading: isLoadingProducts } = useProducts({ 
-        page: 1, 
-        limit: 20, 
-        search: debouncedSearch,
-        category: selectedCategory || undefined
-    });
-    
-    // Lấy danh mục (Giả lập hoặc gọi API danh mục nếu có hook riêng)
-    const { data: categories = [] } = useQuery({
-        queryKey: ['categories'],
-        queryFn: async () => {
-            const res = await api.get('/categories');
-            return res.data?.data || res.data || []; // Handle structure trả về
-        },
-        initialData: []
-    });
+    // [MỚI] Tự động reset về trang 1 khi tìm kiếm hoặc đổi danh mục
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSearch, selectedCategory]);
+
+    const { data: productsData, isLoading: isLoadingProducts } = useProducts(
+        page, // [MỚI] Truyền page động
+        24,   // [MỚI] Limit 24 (chia hết cho 2,3,4,6 cột) để đẹp grid
+        debouncedSearch, 
+        selectedCategory || ''
+    );
+
+    const { data: categories = [] } = useCategories();
+
+    const productList: Product[] = useMemo(() => {
+        if (!productsData) return [];
+        if (productsData.data && Array.isArray(productsData.data)) return productsData.data;
+        if (Array.isArray(productsData)) return productsData;
+        return (productsData as any).products || [];
+    }, [productsData]);
+
+    // [MỚI] Lấy tổng số trang từ API
+    const totalPages = useMemo(() => {
+        if (productsData?.totalPages) return productsData.totalPages;
+        return 1;
+    }, [productsData]);
 
     const { data: customersData } = useAllCustomers();
-    const customers = customersData?.data || [];
+    const customers = useMemo(() => customersData?.data || customersData || [], [customersData]);
     const createInvoiceMutation = useSaveInvoice();
+
+    const filteredCustomers = useMemo(() => {
+        if (!customerSearchTerm) return customers;
+        const lowerTerm = customerSearchTerm.toLowerCase();
+        return customers.filter((c: any) => 
+            (c.name && c.name.toLowerCase().includes(lowerTerm)) || 
+            (c.phone && c.phone.includes(lowerTerm))
+        );
+    }, [customers, customerSearchTerm]);
 
     // --- LOGIC TÍNH TOÁN ---
     const productTotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.quantity), 0), [cart]);
     const finalTotal = productTotal + (isDelivery ? shipFee : 0) - discount;
-    
-    // Logic COD: Nếu khách trả chưa đủ -> phần còn lại là COD. Nếu trả đủ/dư -> COD = 0
     const codAmount = Math.max(0, finalTotal - amountPaid);
-    // Tiền thừa: Chỉ tính khi khách đưa dư
     const changeAmount = Math.max(0, amountPaid - finalTotal);
 
+    // Tự động điền số tiền khách đưa
+    useEffect(() => {
+        if (isDelivery || paymentMethod === 'Công nợ') {
+            if(paymentMethod === 'Công nợ') setAmountPaid(0);
+        } else {
+            setAmountPaid(finalTotal);
+        }
+    }, [finalTotal, paymentMethod, isDelivery]);
+
     // --- HANDLERS ---
-    
-    // Thêm vào giỏ
+    useEffect(() => {
+        function handleClickOutside(event: any) {
+            if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target)) {
+                setShowCustomerDropdown(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
     const addToCart = (product: Product) => {
+        const productId = product.id || product._id;
+        if (!productId) {
+            toast.error("Lỗi dữ liệu sản phẩm (Missing ID)");
+            return;
+        }
+
         setCart(prev => {
-            const exist = prev.find(item => item.id === product._id);
+            const exist = prev.find(item => item.id === productId);
             if (exist) {
-                return prev.map(item => item.id === product._id 
+                return prev.map(item => item.id === productId 
                     ? { ...item, quantity: item.quantity + 1 } 
                     : item
                 );
             }
             return [...prev, { 
-                id: product._id, 
+                id: productId, 
                 sku: product.sku,
                 name: product.name, 
-                price: product.retailPrice, 
+                price: product.price, 
                 quantity: 1,
-                stock: product.quantity 
+                stock: product.stock 
             }];
         });
-        toast.success(`Đã thêm: ${product.name}`);
     };
 
-    // Xóa/Sửa số lượng
     const updateQuantity = (id: string, delta: number) => {
         setCart(prev => prev.map(item => {
             if (item.id === id) {
                 const newQty = Math.max(1, item.quantity + delta);
-                // Check tồn kho nếu cần (item.stock)
                 return { ...item, quantity: newQty };
             }
             return item;
@@ -167,14 +213,29 @@ const SalesPage: React.FC = () => {
         setCart(prev => prev.filter(item => item.id !== id));
     };
 
-    // THANH TOÁN (CHECKOUT)
+    const handleSelectCustomer = (customer: any) => {
+        setCustomerId(customer.id || customer._id);
+        setCustomerName(customer.name);
+        setDeliveryAddress(customer.address || '');
+        setRecipientPhone(customer.phone || '');
+        setCustomerSearchTerm(''); 
+        setShowCustomerDropdown(false);
+    };
+
+    const handleClearCustomer = () => {
+        setCustomerId(null);
+        setCustomerName('Khách lẻ');
+        setDeliveryAddress('');
+        setRecipientPhone('');
+        setCustomerSearchTerm('');
+    };
+
     const handleCheckout = async () => {
         if (cart.length === 0) return;
 
-        // Chuẩn bị dữ liệu gửi lên Server
         const payload = {
             customerId: customerId, 
-            customerName: customerName, // Backend có thể dùng tên này nếu id null
+            customerName: customerName,
             items: cart.map(item => ({
                 productId: item.id,
                 quantity: item.quantity,
@@ -182,88 +243,77 @@ const SalesPage: React.FC = () => {
             })),
             discountAmount: discount,
             paymentMethod: paymentMethod,
-            amountPaid: amountPaid, // Số tiền khách thực đưa
+            paymentAmount: amountPaid,
             note: orderNote,
-            
-            // Thông tin giao hàng
-            isDelivery: isDelivery,
-            delivery: isDelivery ? {
+            deliveryInfo: isDelivery ? {
+                isDelivery: true,
                 shipFee: shipFee,
                 address: deliveryAddress,
                 phone: recipientPhone,
                 shipperName: shipperName,
-                // Server sẽ tự tính codAmount dựa trên finalTotal - amountPaid, 
-                // nhưng gửi lên để lưu log cũng tốt
                 codAmount: codAmount,
-                receiverName: customerName // Mặc định người nhận là khách hàng
+                receiverName: customerName
             } : undefined
         };
 
         try {
-            // Gọi API
             const res = await createInvoiceMutation.mutateAsync(payload);
-
-            // Xử lý thành công
-            if (res) {
-                toast.success('Thanh toán thành công! Đang mở in hóa đơn...');
-                
-                // 1. Lưu hóa đơn vừa tạo & Mở Modal In
-                setCreatedInvoice(res);
+            if (res && res.newInvoice) {
+                toast.success('Thanh toán thành công!');
+                const invoiceId = res.newInvoice.id || res.newInvoice._id;
+                setCreatedInvoiceId(invoiceId);
                 setShowPrintModal(true);
-
-                // 2. Reset Form bán hàng về mặc định
+                
+                // Reset form
                 setCart([]);
                 setAmountPaid(0);
-                setCustomerName('Khách lẻ');
-                setCustomerId(null);
+                handleClearCustomer();
                 setDiscount(0);
                 setOrderNote('');
-                // Reset delivery
                 setIsDelivery(false);
-                setDeliveryAddress('');
-                setRecipientPhone('');
                 setShipFee(0);
                 setShipperName('');
+                setPaymentMethod('Tiền mặt');
             }
         } catch (error: any) {
-            console.error(error);
-            toast.error(error.response?.data?.message || 'Lỗi thanh toán');
+            console.error("Checkout Error:", error);
+            const errorMsg = error.response?.data?.message || error.message || 'Lỗi thanh toán';
+            toast.error(errorMsg);
         }
     };
 
-    // Phím tắt F9
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'F9') handleCheckout();
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart, amountPaid, isDelivery, shipFee, customerId]); // Dependencies quan trọng
+    }, [cart, amountPaid, isDelivery, shipFee, customerId, paymentMethod]);
 
     return (
         <div className="flex h-[calc(100vh-80px)] gap-4 p-2 bg-slate-100 overflow-hidden">
             
             {/* --- CỘT TRÁI: DANH SÁCH SẢN PHẨM --- */}
             <div className="flex-1 flex flex-col gap-3 bg-white rounded-xl shadow-sm p-3 h-full overflow-hidden">
-                {/* Thanh tìm kiếm */}
+                {/* Search */}
                 <div className="relative shrink-0">
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input 
                         ref={searchInputRef}
                         type="text" 
                         placeholder="Tìm sản phẩm (F2)..." 
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         autoFocus
                     />
                 </div>
 
-                {/* Danh mục (Sửa lỗi key) */}
+                {/* Categories */}
                 <div className="flex gap-2 overflow-x-auto pb-2 shrink-0 scrollbar-hide">
                     <button 
                         onClick={() => setSelectedCategory(null)}
-                        className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors
+                        className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors
                             ${!selectedCategory ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}
                         `}
                     >
@@ -271,10 +321,10 @@ const SalesPage: React.FC = () => {
                     </button>
                     {categories.map((cat: Category, index: number) => (
                         <button 
-                            key={cat._id || index} // Fix lỗi key
-                            onClick={() => setSelectedCategory(cat._id)}
-                            className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors
-                                ${selectedCategory === cat._id ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}
+                            key={cat.id || cat._id || index}
+                            onClick={() => setSelectedCategory(cat.id || cat._id || null)}
+                            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors
+                                ${selectedCategory === (cat.id || cat._id) ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}
                             `}
                         >
                             {cat.name}
@@ -282,108 +332,146 @@ const SalesPage: React.FC = () => {
                     ))}
                 </div>
 
-                {/* Grid Sản phẩm */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto pr-1">
-                    {isLoadingProducts ? (
-                        <div className="col-span-full text-center py-10 text-slate-500">Đang tải sản phẩm...</div>
-                    ) : productsData?.data?.products?.map((product: Product) => (
-                        <div 
-                            key={product._id} 
-                            className="bg-white border border-slate-100 rounded-xl p-3 cursor-pointer hover:shadow-md hover:border-primary-200 transition-all flex flex-col h-[180px]"
-                            onClick={() => addToCart(product)}
-                        >
-                            <div className="h-24 bg-slate-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                                {product.image ? (
-                                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-2xl font-bold text-slate-300 select-none">{product.name.charAt(0)}</span>
-                                )}
+                {/* Grid Products */}
+                <div className="flex-1 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 content-start">
+                        {isLoadingProducts ? (
+                            <div className="col-span-full text-center py-10 text-slate-500">Đang tải sản phẩm...</div>
+                        ) : productList.length === 0 ? (
+                            <div className="col-span-full text-center py-10 text-slate-400 flex flex-col items-center">
+                                <FiShoppingCart size={30} className="mb-2 opacity-50"/>
+                                <p className="text-sm">Không tìm thấy SP</p>
                             </div>
-                            <h3 className="font-medium text-sm text-slate-700 line-clamp-2 mb-auto">{product.name}</h3>
-                            <div className="flex justify-between items-end mt-2">
-                                <span className="text-xs text-slate-500">Kho: {product.quantity}</span>
-                                <span className="font-bold text-primary-600">{formatCurrency(product.retailPrice)}</span>
-                            </div>
-                        </div>
-                    ))}
+                        ) : (
+                            productList.map((product: Product) => (
+                                <div 
+                                    key={product.id || product._id}
+                                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-pointer hover:border-primary-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[90px] group relative"
+                                    onClick={() => addToCart(product)}
+                                >
+                                    <div>
+                                        <h3 className="font-semibold text-xs text-slate-700 line-clamp-2 leading-tight mb-1" title={product.name}>
+                                            {product.name}
+                                        </h3>
+                                        <div className="text-[10px] text-slate-500 mb-1">Available: {product.stock}</div>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-auto">
+                                        <span className="font-bold text-sm text-primary-600">{formatCurrency(product.price)}</span>
+                                        <div className="bg-primary-50 text-primary-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <FiPlus size={12}/>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
+
+                {/* [MỚI] Footer Pagination */}
+                {totalPages > 1 && (
+                    <div className="pt-2 border-t border-slate-100 shrink-0">
+                        <Pagination 
+                            currentPage={page} 
+                            totalPages={totalPages} 
+                            onPageChange={setPage} 
+                        />
+                    </div>
+                )}
             </div>
 
             {/* --- CỘT PHẢI: GIỎ HÀNG & THANH TOÁN --- */}
-            <div className="w-[420px] flex flex-col gap-3 h-full shrink-0">
+            <div className="w-[400px] flex flex-col gap-3 h-full shrink-0">
                 
                 {/* 1. Thông tin khách hàng */}
-                <div className="bg-white p-3 rounded-xl shadow-sm flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600 shrink-0">
-                            <FiUser size={20} />
-                        </div>
-                        <div className="min-w-0">
-                            <p className="font-bold text-slate-700 truncate">{customerName}</p>
-                            <p className="text-xs text-slate-500">Khách hàng</p>
-                        </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                        {/* Select khách hàng có sẵn */}
-                        <select 
-                            className="text-xs border border-slate-200 rounded px-2 py-1 outline-none max-w-[100px]"
-                            onChange={(e) => {
-                                const cust = customers.find((c:any) => c._id === e.target.value);
-                                if (cust) {
-                                    setCustomerId(cust._id);
-                                    setCustomerName(cust.name);
-                                    setDeliveryAddress(cust.address || ''); // Auto điền địa chỉ
-                                    setRecipientPhone(cust.phone || '');
-                                } else {
-                                    setCustomerId(null);
-                                    setCustomerName('Khách lẻ');
-                                }
-                            }}
-                            value={customerId || ''}
-                        >
-                            <option value="">Khách lẻ</option>
-                            {customers.map((c: any) => (
-                                <option key={c._id} value={c._id}>{c.name}</option>
-                            ))}
-                        </select>
-                        {/* Nút thêm nhanh khách */}
-                        <Button size="sm" variant="outline" onClick={() => setIsCustomerModalOpen(true)}>
-                            <FiPlus />
-                        </Button>
+                <div className="bg-white p-3 rounded-xl shadow-sm shrink-0 relative z-20" ref={customerDropdownRef}>
+                    <div className="relative">
+                        {customerId ? (
+                            <div className="flex items-center justify-between bg-primary-50 border border-primary-200 text-primary-800 px-3 py-2 rounded-lg">
+                                <div>
+                                    <div className="font-bold text-sm text-primary-900">{customerName}</div>
+                                    <div className="text-xs text-primary-600/80">{recipientPhone || 'Chưa có SĐT'}</div>
+                                </div>
+                                <button onClick={handleClearCustomer} className="p-1 hover:bg-white rounded text-primary-600">
+                                    <FiX size={16} />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Tìm khách hàng (Tên/SĐT)..."
+                                    className="w-full pl-8 pr-8 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-1 focus:ring-primary-500 focus:bg-white outline-none"
+                                    value={customerSearchTerm}
+                                    onChange={(e) => {
+                                        setCustomerSearchTerm(e.target.value);
+                                        setShowCustomerDropdown(true);
+                                    }}
+                                    onFocus={() => setShowCustomerDropdown(true)}
+                                />
+                                <FiUser className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14}/>
+                                <button className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 p-1" onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}>
+                                    <FiChevronDown size={14}/>
+                                </button>
+                            </div>
+                        )}
+
+                        {showCustomerDropdown && !customerId && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 max-h-[300px] overflow-hidden flex flex-col z-50">
+                                <div className="flex-1 overflow-y-auto">
+                                    {filteredCustomers.length === 0 ? (
+                                        <div className="p-3 text-center text-slate-500 text-xs">Không tìm thấy.</div>
+                                    ) : (
+                                        filteredCustomers.map((c: any) => (
+                                            <div key={c.id || c._id} className="px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0" onClick={() => handleSelectCustomer(c)}>
+                                                <div className="font-bold text-sm text-slate-700">{c.name}</div>
+                                                <div className="text-xs text-slate-500">{c.phone || '---'}</div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="p-2 bg-slate-50 border-t border-slate-100 shrink-0">
+                                    <Button fullWidth size="sm" variant="outline" icon={<FiPlus />} onClick={() => { setIsCustomerModalOpen(true); setShowCustomerDropdown(false); }}>
+                                        Thêm mới
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* 2. Danh sách giỏ hàng */}
-                <div className="bg-white flex-1 rounded-xl shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                        <span className="font-bold text-slate-700">Giỏ hàng ({cart.length})</span>
-                        <button onClick={() => setCart([])} className="text-xs text-red-500 hover:text-red-700 font-medium">Xóa tất cả</button>
+                <div className="bg-white flex-1 rounded-xl shadow-sm flex flex-col overflow-hidden z-0">
+                    <div className="p-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                        <span className="font-bold text-sm text-slate-700">Giỏ hàng ({cart.length})</span>
+                        {cart.length > 0 && (
+                             <button onClick={() => setCart([])} className="text-xs text-red-500 hover:text-red-700 font-medium">Xóa hết</button>
+                        )}
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-2 space-y-2">
                         {cart.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                                <FiShoppingCart size={48} className="mb-2" />
-                                <p>Chưa có sản phẩm</p>
+                                <FiBox size={32} className="mb-1" />
+                                <p className="text-xs">Chưa có sản phẩm</p>
                             </div>
                         ) : cart.map((item) => (
-                            <div key={item.id} className="flex gap-2 p-2 rounded-lg border border-slate-100 hover:border-primary-100 bg-white group">
+                            <div key={item.id} className="flex gap-2 p-2 rounded border border-slate-100 hover:border-primary-100 bg-white group">
                                 <div className="flex-1 min-w-0">
                                     <h4 className="font-medium text-sm text-slate-700 truncate">{item.name}</h4>
-                                    <div className="flex items-center gap-2 mt-1">
+                                    <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-xs text-slate-500">{formatCurrency(item.price)}</span>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-1">
                                     <span className="font-bold text-sm text-primary-600">{formatCurrency(item.price * item.quantity)}</span>
-                                    <div className="flex items-center gap-2 bg-slate-50 rounded px-1">
-                                        <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-red-500"><FiMinus size={12}/></button>
-                                        <span className="text-xs font-bold w-6 text-center">{item.quantity}</span>
-                                        <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-green-500"><FiPlus size={12}/></button>
+                                    <div className="flex items-center gap-1 bg-slate-50 rounded px-1 border border-slate-200">
+                                        <button onClick={() => updateQuantity(item.id, -1)} className="p-0.5 hover:text-red-500"><FiMinus size={10}/></button>
+                                        <span className="text-xs font-bold w-5 text-center select-none">{item.quantity}</span>
+                                        <button onClick={() => updateQuantity(item.id, 1)} className="p-0.5 hover:text-green-500"><FiPlus size={10}/></button>
                                     </div>
                                 </div>
-                                <button onClick={() => removeFromCart(item.id)} className="self-center p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <FiTrash2 size={16} />
+                                <button onClick={() => removeFromCart(item.id)} className="self-center p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                    <FiTrash2 size={14} />
                                 </button>
                             </div>
                         ))}
@@ -391,58 +479,46 @@ const SalesPage: React.FC = () => {
                 </div>
 
                 {/* 3. Phần Thanh Toán & Giao Hàng */}
-                <div className="bg-white p-3 rounded-xl shadow-sm shrink-0 flex flex-col gap-3">
-                    
+                <div className="bg-white p-3 rounded-xl shadow-sm shrink-0 flex flex-col gap-2">
                     {/* Toggle Giao hàng */}
                     <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
                             <input 
                                 type="checkbox" 
-                                className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
+                                className="w-3.5 h-3.5 rounded text-primary-600 focus:ring-primary-500"
                                 checked={isDelivery}
                                 onChange={(e) => setIsDelivery(e.target.checked)}
                             />
                             Giao hàng tận nơi
                         </label>
-                        {isDelivery && <span className="text-xs text-blue-600 font-medium animate-pulse">Đang bật chế độ giao hàng</span>}
+                        {isDelivery && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold animate-pulse">ON</span>}
                     </div>
 
-                    {/* Form Giao hàng (Chỉ hiện khi bật) */}
+                    {/* Form Giao hàng */}
                     {isDelivery && (
-                        <div className="space-y-2 animate-fade-in bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            {/* Dòng 1: Địa chỉ & SĐT */}
-                            <div className="flex gap-2">
-                                <div className="flex-1 relative">
-                                    <FiMapPin className="absolute left-2.5 top-2.5 text-blue-400 text-xs"/>
-                                    <input 
-                                        type="text" placeholder="Địa chỉ giao..." 
-                                        className="w-full pl-7 pr-3 py-1.5 text-xs border border-blue-200 rounded outline-none focus:border-blue-500"
-                                        value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
-                                    />
-                                </div>
-                                <div className="w-1/3 relative">
-                                    <FiPhone className="absolute left-2.5 top-2.5 text-blue-400 text-xs"/>
-                                    <input 
-                                        type="text" placeholder="SĐT..." 
-                                        className="w-full pl-7 pr-3 py-1.5 text-xs border border-blue-200 rounded outline-none focus:border-blue-500"
-                                        value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
-                                    />
-                                </div>
+                        <div className="space-y-1.5 bg-blue-50/50 p-2 rounded border border-blue-100 animate-fade-in">
+                            <div className="flex gap-1.5">
+                                <input 
+                                    type="text" placeholder="Địa chỉ giao..." 
+                                    className="flex-1 px-2 py-1 text-xs border border-blue-200 rounded outline-none focus:border-blue-500 bg-white"
+                                    value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
+                                />
+                                <input 
+                                    type="text" placeholder="SĐT..." 
+                                    className="w-1/3 px-2 py-1 text-xs border border-blue-200 rounded outline-none focus:border-blue-500 bg-white"
+                                    value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
+                                />
                             </div>
-                            {/* Dòng 2: Shipper & Phí Ship */}
-                            <div className="flex gap-2 items-center">
-                                <div className="flex-1 relative">
-                                    <FiTruck className="absolute left-2.5 top-2.5 text-blue-400 text-xs"/>
-                                    <input 
-                                        type="text" placeholder="Tên Shipper / Đơn vị VC" 
-                                        className="w-full pl-7 pr-3 py-1.5 text-xs border border-blue-200 rounded outline-none focus:border-blue-500"
-                                        value={shipperName} onChange={e => setShipperName(e.target.value)}
-                                    />
-                                </div>
-                                <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-blue-200">
-                                    <span className="text-xs font-bold text-blue-700 whitespace-nowrap">Ship:</span>
+                            <div className="flex gap-1.5">
+                                <input 
+                                    type="text" placeholder="Shipper..." 
+                                    className="flex-1 px-2 py-1 text-xs border border-blue-200 rounded outline-none focus:border-blue-500 bg-white"
+                                    value={shipperName} onChange={e => setShipperName(e.target.value)}
+                                />
+                                <div className="w-1/3 flex items-center bg-white border border-blue-200 rounded px-2">
+                                    <span className="text-[10px] text-blue-500 mr-1">Ship:</span>
                                     <NumericFormat 
-                                        className="w-16 text-right text-xs font-bold text-blue-700 outline-none"
+                                        className="w-full text-right text-xs font-bold text-blue-700 outline-none"
                                         value={shipFee} onValueChange={(v) => setShipFee(v.floatValue || 0)}
                                         thousandSeparator="," placeholder="0"
                                     />
@@ -452,41 +528,42 @@ const SalesPage: React.FC = () => {
                     )}
 
                     {/* Tính tiền */}
-                    <div className="space-y-1 pt-2 border-t border-slate-100">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Tổng tiền hàng:</span>
+                    <div className="pt-1 border-t border-slate-100 space-y-1">
+                        <div className="flex justify-between text-xs">
+                            <span className="text-slate-500">Tổng hàng:</span>
                             <span className="font-medium">{formatCurrency(productTotal)}</span>
                         </div>
                         {isDelivery && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-slate-500">Phí vận chuyển:</span>
+                            <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">Phí ship:</span>
                                 <span className="font-medium text-blue-600">+{formatCurrency(shipFee)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between text-sm">
+                        <div className="flex justify-between text-xs items-center">
                             <span className="text-slate-500">Giảm giá:</span>
                             <NumericFormat 
-                                className="w-20 text-right font-medium text-red-500 outline-none border-b border-dashed border-red-200 focus:border-red-500"
-                                value={discount} onValueChange={(v) => setDiscount(v.floatValue || 0)}
-                                thousandSeparator="," prefix="-"
+                                className="w-20 text-right font-medium text-red-500 outline-none border-b border-dashed border-red-200 focus:border-red-500 bg-transparent py-0"
+                                value={discount} 
+                                onValueChange={(v) => setDiscount(v.floatValue || 0)}
+                                thousandSeparator="," prefix="-" placeholder="0" allowNegative={false} 
                             />
                         </div>
-                        <div className="flex justify-between items-center pt-1">
-                            <span className="font-bold text-slate-700 text-base">Khách phải trả:</span>
-                            <span className="font-black text-xl text-primary-600">{formatCurrency(finalTotal)}</span>
+                        <div className="flex justify-between items-center pt-1 mt-1 border-t border-slate-100">
+                            <span className="font-bold text-slate-700 text-sm">Phải trả:</span>
+                            <span className="font-black text-lg text-primary-600">{formatCurrency(finalTotal)}</span>
                         </div>
                     </div>
 
-                    {/* Hình thức thanh toán */}
-                    <div className="flex gap-2">
-                        <PaymentMethodButton method="cash" icon={FiDollarSign} label="Tiền mặt" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
-                        <PaymentMethodButton method="transfer" icon={FiCreditCard} label="Chuyển khoản" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
-                        <PaymentMethodButton method="debt" icon={FiFileText} label="Công nợ" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
+                    {/* Phương thức thanh toán */}
+                    <div className="flex gap-1.5">
+                        <PaymentMethodButton method="Tiền mặt" icon={FiDollarSign} label="Tiền mặt" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
+                        <PaymentMethodButton method="Chuyển khoản" icon={FiCreditCard} label="Chuyển khoản" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
+                        <PaymentMethodButton method="Công nợ" icon={FiFileText} label="Công nợ" currentMethod={paymentMethod} setMethod={setPaymentMethod} />
                     </div>
 
-                    {/* Khách đưa tiền & Tiền thừa/COD */}
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                        <div className="flex justify-between items-center mb-2">
+                    {/* Khách đưa */}
+                    <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                        <div className="flex justify-between items-center mb-1">
                             <span className="text-xs font-bold text-slate-600 uppercase">Khách đưa:</span>
                             <NumericFormat 
                                 className="w-32 text-right font-bold text-lg text-slate-800 bg-transparent outline-none border-b border-slate-300 focus:border-primary-500"
@@ -495,48 +572,44 @@ const SalesPage: React.FC = () => {
                             />
                         </div>
 
-                        {/* Tiền mặt nhanh */}
-                        <div className="flex gap-1 justify-end mb-2">
+                        {/* Gợi ý tiền mặt */}
+                        <div className="flex gap-1 justify-end mb-1 flex-wrap">
                             {[500000, 200000, 100000, 50000].map(val => (
                                 <QuickCashButton key={val} value={val} onClick={setAmountPaid} />
                             ))}
                         </div>
 
-                        {/* Hiển thị kết quả: Tiền thừa hoặc COD */}
-                        <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                        <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                             {isDelivery && codAmount > 0 ? (
                                 <>
                                     <span className="text-xs font-bold text-red-600 uppercase">Thu hộ (COD):</span>
-                                    <span className="font-black text-lg text-red-600">{formatCurrency(codAmount)}</span>
+                                    <span className="font-black text-base text-red-600">{formatCurrency(codAmount)}</span>
                                 </>
                             ) : (
                                 <>
                                     <span className="text-xs font-bold text-green-600 uppercase">Tiền thừa:</span>
-                                    <span className="font-black text-lg text-green-600">{formatCurrency(changeAmount)}</span>
+                                    <span className="font-black text-base text-green-600">{formatCurrency(changeAmount)}</span>
                                 </>
                             )}
                         </div>
                     </div>
 
-                    {/* Nút Thanh Toán */}
                     <Button 
                         fullWidth 
                         size="lg" 
                         variant="primary" 
-                        icon={isDelivery ? <FiTruck size={24}/> : <FiCheckCircle size={24} />} 
+                        icon={isDelivery ? <FiTruck size={20}/> : <FiCheckCircle size={20} />} 
                         onClick={handleCheckout} 
                         disabled={cart.length === 0 || createInvoiceMutation.isPending} 
                         isLoading={createInvoiceMutation.isPending} 
-                        className="py-3 text-lg font-bold shadow-lg shadow-primary-600/30 hover:shadow-primary-600/50 transition-all"
+                        className="py-2.5 text-base font-bold shadow-lg shadow-primary-600/30 hover:shadow-primary-600/50 transition-all"
                     >
-                        {isDelivery ? 'TẠO ĐƠN GIAO (F9)' : 'THANH TOÁN (F9)'}
+                        {isDelivery ? 'TẠO ĐƠN (F9)' : 'THANH TOÁN (F9)'}
                     </Button>
                 </div>
             </div>
 
-            {/* --- MODALS --- */}
-            
-            {/* Modal thêm khách nhanh */}
+            {/* MODALS */}
             {isCustomerModalOpen && (
                 <QuickCustomerModal 
                     isOpen={isCustomerModalOpen} 
@@ -544,22 +617,22 @@ const SalesPage: React.FC = () => {
                     onSuccess={(newCustomer: any) => {
                         setCustomerId(newCustomer.id || newCustomer._id);
                         setCustomerName(newCustomer.name);
+                        setDeliveryAddress(newCustomer.address || '');
+                        setRecipientPhone(newCustomer.phone || '');
                         setIsCustomerModalOpen(false);
+                        setCustomerSearchTerm('');
                     }}
                 />
             )}
-
-            {/* Modal In hóa đơn (Tự động mở sau khi thanh toán) */}
-            {showPrintModal && createdInvoice && (
+            
+            {showPrintModal && createdInvoiceId && (
                 <PrintInvoiceModal
-                    isOpen={showPrintModal}
+                    invoiceId={createdInvoiceId} 
                     onClose={() => {
                         setShowPrintModal(false);
-                        setCreatedInvoice(null);
-                        // Focus lại vào ô tìm kiếm để bán đơn tiếp theo
+                        setCreatedInvoiceId(null);
                         searchInputRef.current?.focus();
                     }}
-                    invoice={createdInvoice}
                 />
             )}
         </div>

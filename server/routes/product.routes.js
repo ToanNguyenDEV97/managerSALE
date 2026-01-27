@@ -10,7 +10,7 @@ const productValidation = require('../validations/product.validation');
 
 // ... Các đoạn code router bên dưới giữ nguyên
 router.get('/', productController.getProducts);
-router.get('/history/:productId', productController.getProductHistory);
+router.get('/:id/stock-history', productController.getProductStockHistory);
 router.post('/', validate(productValidation.createProduct), productController.createProduct);
 router.put('/:id', validate(productValidation.updateProduct), productController.updateProduct);
 router.delete('/:id', productController.deleteProduct);
