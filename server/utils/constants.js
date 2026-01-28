@@ -3,9 +3,11 @@
 // 1. Trạng thái Đơn hàng
 const ORDER_STATUS = {
     NEW: 'Mới',
-    PENDING: 'Chờ xử lý',
+    APPROVED: 'Đã duyệt',
+    SHIPPING: 'Đang giao',
     COMPLETED: 'Hoàn thành',
-    CANCELLED: 'Đã hủy' // Thêm dự phòng
+    CANCELLED: 'Hủy',
+    RETURNED: 'Trả hàng'
 };
 
 // 2. Trạng thái Hóa đơn
